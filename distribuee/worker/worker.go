@@ -73,8 +73,8 @@ func main() {
 	if err != nil {
 		log.Fatal("Dialing:", err)
 	}
-	worker := new(Worker)
-	go worker.simulate(client, 0.1, 0.01)
+
+	go worker.simulate(client, listener, 0.1, 0.01)
 }
 func (worker Worker) pingMaster(client *rpc.Client) {
 	ticker := time.NewTicker(3 * time.Second)
