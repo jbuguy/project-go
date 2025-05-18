@@ -51,6 +51,22 @@ func AnsName(jobName string) string {
 	return prefix + jobName
 }
 
+const prefix = "disttmp."
+
+func ReduceName(jobName string, mapTask int, reduceTask int) string {
+	return prefix + jobName + "-" + strconv.Itoa(mapTask) + "-" + strconv.Itoa(reduceTask)
+}
+
+// mergeName constructs the name of the output file of reduce task <reduceTask>
+func MergeName(jobName string, reduceTask int) string {
+	return prefix + jobName + "-res-" + strconv.Itoa(reduceTask)
+}
+
+// ansName constructs the name of the output file of the final answer
+func AnsName(jobName string) string {
+	return prefix + jobName
+}
+
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 	worker.pingMaster(client,p1)
 	for {
