@@ -63,6 +63,8 @@ func main() {
 	if err != nil {
 		log.Fatal("Dialing:", err)
 	}
+	var id int
+	client.Call("master.getId", nil, id)
 
 	go worker.simulate(client, 0.1, 0.01)
 }

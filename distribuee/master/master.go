@@ -1,6 +1,7 @@
 package master
 
 import (
+	"fmt"
 	"net"
 	"net/rpc"
 	"sort"
@@ -20,6 +21,7 @@ type Master struct {
 	waiting []chan Task
 	mu      sync.Mutex
 	clients []Client
+	id      int
 }
 type Client struct {
 	id   string
@@ -38,6 +40,11 @@ type Args2 struct {
 	taskNumber int
 }
 
+func (master *Master) getId(args *struct{}, id *string) error {
+	*id = fmt.Sprint(master.id)
+	master.id += 1
+	return nil
+}
 func (master *Master) getTask(args Args, reply *Task) error {
 	taskchan := make(chan Task, 1)
 	master.mu.Lock()
