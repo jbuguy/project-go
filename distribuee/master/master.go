@@ -1,4 +1,4 @@
-package master
+package dist
 
 import (
 	"encoding/json"
@@ -84,26 +84,13 @@ func main() {
 		go rpc.ServeConn(conn)
 	}
 }
-func handleStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		return
-	}
-	var par Par1
-	err := json.NewDecoder(r.Body).Decode(&par)
-	if err != nil {
-		return
-	}
-	master.nMap = par.NMap
-	master.nMap = par.NReduce
-	go master.run()
 
-}
 func (master *Master) run() {
-	for i := 0; i < master.nMap; i++ {
+	for i := range master.nMap {
 		master.addTask(Task{jobName: "map", taskNumber: i})
 	}
 	<-master.pass
-	for i := 0; i < master.nMap; i++ {
+	for i := range master.nMap {
 		master.addTask(Task{jobName: "reduce", taskNumber: i})
 	}
 	<-master.pass
@@ -157,10 +144,19 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 	defer master.mutex.Unlock()
 	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
 	*reply = true
-	if len(master.completed) == master.numtasks {
+	if master.completedTasks() == master.numtasks {
 		master.pass <- 1
 	}
 	return nil
+}
+func (master *Master) completedTasks() int {
+	c := 0
+	for _, v := range master.completed {
+		if v == true {
+			c++
+		}
+	}
+	return c
 }
 
 func handleStatus(w http.ResponseWriter, req *http.Request) {
@@ -178,4 +174,18 @@ func (master *Master) Ping(args Args, reply *bool) error {
 	}
 	*reply = false
 	return nil
+}
+func handleStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	var par Par1
+	err := json.NewDecoder(r.Body).Decode(&par)
+	if err != nil {
+		return
+	}
+	master.nMap = par.NMap
+	master.nMap = par.NReduce
+	go master.run()
+
 }
