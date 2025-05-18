@@ -40,5 +40,4 @@ func reduceF(key string, values []string) string {
 func doMap(jobName string, mapTaskNumber int, inFile string, nReduce int, mapF func(
 	file string, contents string) []KeyValue) {
 
-		common
 }
