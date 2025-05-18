@@ -24,11 +24,15 @@ type Master struct {
 	tasks     []Task
 	waiting   []chan Task
 	mutex     sync.Mutex
-	clients   []Client
+	clients   Clients
 	id        int
 	completed map[string]bool
 	numtasks  int
 	stage     chan int
+}
+type Clients struct {
+	clients []Client
+	mutex   sync.Mutex
 }
 
 var nReduce int
@@ -79,9 +83,9 @@ func heartbeat(timeout int) {
 	defer ticker.Stop()
 	for range ticker.C {
 		now := time.Now()
-		master.mutex.Lock()
+		master.clients.mutex.Lock()
 		clients := []Client{}
-		for _, client := range master.clients {
+		for _, client := range master.clients.clients {
 			if now.Sub(client.t) < time.Duration(timeout)*time.Second {
 				clients = append(clients, client)
 			} else {
@@ -92,8 +96,8 @@ func heartbeat(timeout int) {
 				}
 			}
 		}
-		master.clients = clients
-		master.mutex.Unlock()
+		master.clients.clients = clients
+		master.clients.mutex.Unlock()
 	}
 }
 
@@ -141,7 +145,6 @@ func (master *Master) run() {
 func (master *Master) clear() {
 	master.completed = make(map[string]bool)
 	master.tasks = make([]Task, 0)
-	master.clients = make([]Client, 0)
 	master.waiting = make([]chan Task, 0)
 }
 
@@ -156,11 +159,11 @@ func (master *Master) getTask(args Args, reply *Task) error {
 	defer master.mutex.Unlock()
 	if len(master.tasks) > 0 {
 		*reply = master.tasks[0]
-		master.clients = append(master.clients, Client{args.id, *reply, time.Now()})
+		master.clients.clients = append(master.clients.clients, Client{args.id, *reply, time.Now()})
 		x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
 		master.completed[x] = false
-		sort.Slice(master.clients, func(i, j int) bool {
-			return master.clients[i].t.Before(master.clients[j].t)
+		sort.Slice(master.clients.clients, func(i, j int) bool {
+			return master.clients.clients[i].t.Before(master.clients.clients[j].t)
 		})
 		master.tasks = master.tasks[1:]
 		return nil
@@ -169,8 +172,8 @@ func (master *Master) getTask(args Args, reply *Task) error {
 	master.completed[x] = false
 	master.waiting = append(master.waiting, taskchan)
 	*reply = <-taskchan
-	sort.Slice(master.clients, func(i, j int) bool {
-		return master.clients[i].t.Before(master.clients[j].t)
+	sort.Slice(master.clients.clients, func(i, j int) bool {
+		return master.clients.clients[i].t.Before(master.clients.clients[j].t)
 	})
 	return nil
 
@@ -202,13 +205,15 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 
 func remove(master *Master, jobName string, taskNumber int) {
 	i := 0
-	for j, v := range master.clients {
+	master.clients.mutex.Lock()
+	defer master.clients.mutex.Unlock()
+	for j, v := range master.clients.clients {
 		if v.task.taskNumber == taskNumber && v.task.jobName == jobName {
 			i = j
 			break
 		}
 	}
-	master.clients = append(master.clients[:i], master.clients[i+1:]...)
+	master.clients.clients = append(master.clients.clients[:i], master.clients.clients[i+1:]...)
 }
 func (master *Master) completedTasks() int {
 	c := 0
@@ -226,9 +231,9 @@ func handleStatus(w http.ResponseWriter, req *http.Request) {
 
 }
 func (master *Master) Ping(args Args, reply *bool) error {
-	for i, _ := range master.clients {
-		if master.clients[i].id == args.id {
-			master.clients[i].t = time.Now()
+	for i, _ := range master.clients.clients {
+		if master.clients.clients[i].id == args.id {
+			master.clients.clients[i].t = time.Now()
 			*reply = true
 			return nil
 		}
