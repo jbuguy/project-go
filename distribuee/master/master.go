@@ -73,7 +73,28 @@ func main() {
 	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool)}
 	listener := setuprpc()
 	listenWorkers(listener)
-
+}
+func heartbeat(timeout int) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		now := time.Now()
+		master.mutex.Lock()
+		clients := []Client{}
+		for _, client := range master.clients {
+			if now.Sub(client.t) < time.Duration(timeout)*time.Second {
+				clients = append(clients, client)
+			} else {
+				fmt.Printf("Worker %s timed out\n", client.id)
+				x := fmt.Sprintf("%s%d", client.task.jobName, client.task.taskNumber)
+				if !master.completed[x] {
+					master.addTask(client.task)
+				}
+			}
+		}
+		master.clients = clients
+		master.mutex.Unlock()
+	}
 }
 
 func setuprpc() net.Listener {
@@ -172,10 +193,22 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 	defer master.mutex.Unlock()
 	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
 	*reply = true
+	remove(master, args.jobName, args.taskNumber)
 	if master.completedTasks() == master.numtasks {
 		master.stage <- 1
 	}
 	return nil
+}
+
+func remove(master *Master, jobName string, taskNumber int) {
+	i := 0
+	for j, v := range master.clients {
+		if v.task.taskNumber == taskNumber && v.task.jobName == jobName {
+			i = j
+			break
+		}
+	}
+	master.clients = append(master.clients[:i], master.clients[i+1:]...)
 }
 func (master *Master) completedTasks() int {
 	c := 0
