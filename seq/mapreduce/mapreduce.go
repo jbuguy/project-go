@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const prefix = "mrtmp."
@@ -124,4 +125,22 @@ func DoReduce(
 		// Appliquer reduceF pour réduire les valeurs associées à cette clé
 		// Écrire la clé et la valeur réduite dans le fichier de sortie
 	}
+}
+
+func mapF(document string, content string) []KeyValue {
+	words := strings.Fields(content)
+	kvs := []KeyValue{}
+
+	for _, word := range words {
+		cleaned := strings.ToLower(strings.Trim(word, ".,!?\"';:()[]{}"))
+		if cleaned != "" {
+			kvs = append(kvs, KeyValue{Key: cleaned, Value: "1"})
+		}
+	}
+
+	return kvs
+}
+
+func reduceF(key string, values []string) string {
+	return fmt.Sprintf("%d", len(values))
 }
