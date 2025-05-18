@@ -90,7 +90,7 @@ func main() {
 		go start()
 	}
 }
-func (worker Worker) pingMaster(client *rpc.Client, p float64) {
+func (worker Worker) pingMaster(client *rpc.Client) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
