@@ -28,10 +28,11 @@ type Master struct {
 	id        int
 	completed map[string]bool
 	numtasks  int
-	nMap      int
-	nReduce   int
-	pass      chan int
+	stage     chan int
 }
+
+var nReduce int
+var nMap int
 
 type Client struct {
 	id   string
@@ -69,16 +70,22 @@ var master Master
 
 func main() {
 	setuphttp()
-	master = Master{id: 0, pass: make(chan int), completed: make(map[string]bool)}
-	setuprpc()
+	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool)}
+	listener := setuprpc()
+	listenWorkers(listener)
+
 }
 
-func setuprpc() {
+func setuprpc() net.Listener {
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
 	if err != nil {
-		return
+		return nil
 	}
+	return listener
+}
+
+func listenWorkers(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
@@ -101,12 +108,12 @@ func (master *Master) run() {
 	for i := range count {
 		master.addTask(Task{jobName: "map", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i)})
 	}
-	<-master.pass
+	<-master.stage
 	master.clear()
-	for i := range master.nMap {
+	for i := range nMap {
 		master.addTask(Task{jobName: "reduce", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i)})
 	}
-	<-master.pass
+	<-master.stage
 	master.clear()
 }
 
@@ -166,7 +173,7 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
 	*reply = true
 	if master.completedTasks() == master.numtasks {
-		master.pass <- 1
+		master.stage <- 1
 	}
 	return nil
 }
@@ -205,8 +212,8 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	master.nMap = par.NMap
-	master.nReduce = par.NReduce
+	nMap = par.NMap
+	nReduce = par.NReduce
 	go master.run()
 
 }
