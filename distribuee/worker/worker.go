@@ -1,9 +1,12 @@
 package dist
 
 import (
+	"fmt"
 	"log"
 	"math/rand"
 	"net/rpc"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -27,6 +30,22 @@ type Reply1 struct {
 	inFile     string
 	funcName   string
 	nReduce    int
+}
+
+const prefix = "disttmp."
+
+func ReduceName(jobName string, mapTask int, reduceTask int) string {
+	return prefix + jobName + "-" + strconv.Itoa(mapTask) + "-" + strconv.Itoa(reduceTask)
+}
+
+// mergeName constructs the name of the output file of reduce task <reduceTask>
+func MergeName(jobName string, reduceTask int) string {
+	return prefix + jobName + "-res-" + strconv.Itoa(reduceTask)
+}
+
+// ansName constructs the name of the output file of the final answer
+func AnsName(jobName string) string {
+	return prefix + jobName
 }
 
 func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
@@ -65,6 +84,7 @@ func main() {
 	}
 	var id int
 	client.Call("master.getId", nil, id)
+	os.Mkdir(fmt.Sprintf("worker%d", id), os.ModePerm)
 
 	go worker.simulate(client, 0.1, 0.01)
 }
