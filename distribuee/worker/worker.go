@@ -75,7 +75,7 @@ func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
 		}
 	}
 }
-func main() {
+func start() {
 	var worker Worker
 	client, err := rpc.Dial("tcp", "localhost:1234")
 	defer client.Close()
@@ -89,6 +89,11 @@ func main() {
 
 	go worker.simulate(client, 0.1, 0.01)
 }
+func main() {
+	for range 5 {
+		start()
+	}
+}
 func (worker Worker) pingMaster(client *rpc.Client) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
@@ -100,7 +105,9 @@ func (worker Worker) pingMaster(client *rpc.Client) {
 
 // TODO: complete the functions
 func doMap(jobName string, mapTaskNumber int, inFile string, nReduce int, mapF func(
-	file string, contents string) []KeyValue)
+	file string, contents string) []KeyValue) {
+
+}
 func mapF(document string, content string) []KeyValue
 func reduceF(key string, values []string) string
 func doReduce(jobName string, reduceTaskNumber int, inFile string, reduceF func(key string, values []string) string)
