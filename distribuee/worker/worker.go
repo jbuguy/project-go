@@ -102,8 +102,6 @@ func (worker Worker) pingMaster(client *rpc.Client) {
 		client.Call("master.ping", Args{worker.id}, &reply)
 	}
 }
-
-// TODO: complete the functions
 func DoMap(
 	jobName string,
 	mapTaskNumber int,
@@ -111,13 +109,9 @@ func DoMap(
 	nReduce int,
 	mapF func(string, string) []KeyValue,
 ) {
-	// Lire le contenu du fichier d'entrée
 	data, _ := os.ReadFile(inFile)
 	content := string(data)
-	// Appliquer la fonction mapF pour obtenir des paires clé-valeur
 	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
-	// Créer nReduce fichiers, un pour chaque tâche de réduction
-	// utiliser reduceName
 	files := make([]*os.File, nReduce)
 	for i := range nReduce {
 		name := ReduceName(jobName, mapTaskNumber, int(i))
@@ -125,9 +119,6 @@ func DoMap(
 		files = append(files, file)
 		defer file.Close()
 	}
-	// Partitionner les paires clé-valeur en fonction du hachage de la clé
-	// Calculer la tâche de réduction associée à chaque clé
-	// Écrire la paire clé-valeur dans le fichier approprié
 	for _, v := range kvs {
 		hash := ihash(v.Key)
 		index := hash % uint32(nReduce)
