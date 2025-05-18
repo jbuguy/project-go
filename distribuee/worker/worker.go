@@ -1,4 +1,4 @@
-package dist
+package main
 
 import (
 	"fmt"
@@ -84,7 +84,8 @@ func main() {
 	}
 	var id int
 	client.Call("master.getId", nil, id)
-	os.Mkdir(fmt.Sprintf("worker%d", id), os.ModePerm)
+	os.Mkdir(fmt.Sprintf("./files/worker%d", id), os.ModePerm)
+	os.Chdir(fmt.Sprintf("./files/worker%d", id))
 
 	go worker.simulate(client, 0.1, 0.01)
 }

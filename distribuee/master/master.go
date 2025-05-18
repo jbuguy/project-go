@@ -1,11 +1,13 @@
-package dist
+package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"net/rpc"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -66,6 +68,7 @@ var ls Liststatus
 var master Master
 
 func main() {
+	os.Chdir("./files/master")
 	master = Master{id: 0}
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
@@ -86,6 +89,7 @@ func main() {
 }
 
 func (master *Master) run() {
+	split("file", 1)
 	for i := range master.nMap {
 		master.addTask(Task{jobName: "map", taskNumber: i})
 	}
@@ -188,4 +192,38 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	master.nMap = par.NReduce
 	go master.run()
 
+}
+func split(filename string, lines int) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	sc := bufio.NewScanner(file)
+	part := 1
+	line := 0
+	var out *os.File
+	var w *bufio.Writer
+	f := func() {
+		if out != nil {
+			w.Flush()
+			out.Close()
+		}
+		partname, _ := os.Create(fmt.Sprintf("%s.part%d", filename, part))
+		w = bufio.NewWriter(partname)
+		part++
+		line = 0
+		return
+	}
+	for sc.Scan() {
+		if line >= line {
+			f()
+		}
+		w.WriteString(sc.Text() + "\n")
+		line++
+	}
+	if out != nil {
+		w.Flush()
+		out.Close()
+	}
+	return nil
 }
