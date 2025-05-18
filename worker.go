@@ -1,6 +1,10 @@
 package main
 
-import "strings"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 type KeyValue[Key, Value interface{}] struct {
 	key   Key
@@ -18,4 +22,14 @@ func mapF(document, content string) []KeyValue[string, int] {
 		result = append(result, KeyValue[string, int]{k, v})
 	}
 	return result
+}
+func reduceF(key string, values []string) string {
+	count := 0
+	for _, v := range values {
+		value,err:= strconv.Atoi(v)
+		if err==nil{
+			count+=value
+		}
+	}
+	return fmt.Sprint(count)
 }
