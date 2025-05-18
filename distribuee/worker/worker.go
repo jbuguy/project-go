@@ -103,12 +103,13 @@ func start() {
 	worker.simulate(client, 0.1, 0.01)
 }
 
+
 func main() {
-	for i := 0; i < 5; i++ {
-		go start()
+	for range 5 {
+		start()
 	}
 }
-func (worker Worker) pingMaster(client *rpc.Client, p float64) {
+func (worker Worker) pingMaster(client *rpc.Client) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
