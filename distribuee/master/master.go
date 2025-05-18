@@ -54,6 +54,7 @@ func (master *Master) addTask(task Task) {
 		master.tasks = append(master.tasks, task)
 	}
 }
+// TODO:cpmplete
 func (Master *Master) ReportTaskDone(Args2, reply bool) {
 
 }

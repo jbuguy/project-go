@@ -8,6 +8,7 @@ import (
 )
 
 type Worker struct {
+	id string
 }
 type Args2 struct {
 	jobName    string
@@ -17,13 +18,20 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
-type Args struct{}
+type Args struct {
+	id string
+}
 type Reply1 struct {
 	jobName    string
 	taskNumber int
 	inFile     string
 	funcName   string
 	nReduce    int
+}
+
+func (Worker Worker) Ping(args struct{}, reply *string) error {
+	*reply = Worker.id
+	return nil
 }
 
 func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
@@ -54,13 +62,24 @@ func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
 	}
 }
 func main() {
+	var worker Worker
 	client, err := rpc.Dial("tcp", "localhost:1234")
 	defer client.Close()
 	if err != nil {
 		log.Fatal("Dialing:", err)
 	}
-	worker := new(Worker)
+	var reply string
+	client.Call("master.getId", nil, reply)
 	go worker.simulate(client, 0.1, 0.01)
+	go worker.pingMaster(client, reply)
+}
+func (worker Worker) pingMaster(client *rpc.Client, id string) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		var reply bool
+		client.Call("master.rpc", Args{worker.id}, &reply)
+	}
 }
 
 // TODO: complete the functions
