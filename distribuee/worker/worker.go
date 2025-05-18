@@ -114,7 +114,11 @@ func DoMap(
 	data, _ := os.ReadFile(inFile)
 	content := string(data)
 	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	sort.slice(kvs ,func(i, j int) bool {
+		return kvs[i].key < kvs[j].key
+	})
 	files := make([]*os.File, nReduce)
+	
 	for i := range nReduce {
 		name := ReduceName(jobName, mapTaskNumber, i)
 		file, _ := os.Create(name)
@@ -130,18 +134,6 @@ func DoMap(
 		}
 		file.WriteString(fmt.Sprintf("%s\n", v.Value))
 	}
-	for i := range nReduce {
-		name := ReduceName(jobName, mapTaskNumber, i)
-		// Lire le contenu du fichier d'entrée
-		data, _ := os.ReadFile(name)
-		content := string(data)
-		// Appliquer la fonction mapF pour obtenir des paires clé-valeur
-		lines := strings.Split(string(content), "\n")
-		sort.Strings(lines)
-		sortedContent := strings.Join(lines, "\n")
-		os.WriteFile(name, []byte(sortedContent), 0644)
-	}
-
 }
 
 func ihash(s string) uint32 {
