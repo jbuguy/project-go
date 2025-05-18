@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/rpc"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -114,14 +115,13 @@ func DoMap(
 	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
 	files := make([]*os.File, nReduce)
 	for i := range nReduce {
-		name := ReduceName(jobName, mapTaskNumber, int(i))
+		name := ReduceName(jobName, mapTaskNumber, i)
 		file, _ := os.Create(name)
 		files = append(files, file)
 		defer file.Close()
 	}
 	for _, v := range kvs {
-		hash := ihash(v.Key)
-		index := hash % uint32(nReduce)
+		index := ihash(v.Key) % uint32(nReduce)
 		name := ReduceName(jobName, mapTaskNumber, int(index))
 		file, err := os.OpenFile(name, os.O_APPEND, 0644)
 		if err != nil {
@@ -129,6 +129,18 @@ func DoMap(
 		}
 		file.WriteString(fmt.Sprintf("%s\n", v.Value))
 	}
+	for i := range nReduce {
+		name := ReduceName(jobName, mapTaskNumber, i)
+		// Lire le contenu du fichier d'entrée
+		data, _ := os.ReadFile(name)
+		content := string(data)
+		// Appliquer la fonction mapF pour obtenir des paires clé-valeur
+		lines := strings.Split(string(content), "\n")
+		sort.Strings(lines)
+		sortedContent := strings.Join(lines, "\n")
+		os.WriteFile(name, []byte(sortedContent), 0644)
+	}
+
 }
 
 func ihash(s string) uint32 {
