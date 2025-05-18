@@ -231,7 +231,7 @@ func handleStatus(w http.ResponseWriter, req *http.Request) {
 
 }
 func (master *Master) Ping(args Args, reply *bool) error {
-	for i, _ := range master.clients.clients {
+	for i := range master.clients.clients {
 		if master.clients.clients[i].id == args.id {
 			master.clients.clients[i].t = time.Now()
 			*reply = true
