@@ -69,7 +69,7 @@ var master Master
 
 func main() {
 	os.Chdir("./files/master")
-	master = Master{id: 0}
+	master = Master{id: 0, pass: make(chan int), completed: make(map[string]bool)}
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
 	http.Handle("/", http.FileServer(http.Dir("./web")))
@@ -95,10 +95,19 @@ func (master *Master) run() {
 		master.addTask(Task{jobName: "map", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i)})
 	}
 	<-master.pass
+	master.clear()
 	for i := range master.nMap {
 		master.addTask(Task{jobName: "reduce", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i)})
 	}
 	<-master.pass
+	master.clear()
+}
+
+func (master *Master) clear() {
+	master.completed = make(map[string]bool)
+	master.tasks = make([]Task, 0)
+	master.clients = make([]Client, 0)
+	master.waiting = make([]chan Task, 0)
 }
 
 func (master *Master) getId(args *struct{}, id *string) error {
@@ -190,7 +199,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	master.nMap = par.NMap
-	master.nMap = par.NReduce
+	master.nReduce = par.NReduce
 	go master.run()
 
 }
@@ -215,6 +224,7 @@ func split(filename string, lines int) int {
 		line = 0
 		return
 	}
+	f()
 	for sc.Scan() {
 		if line >= lines {
 			f()

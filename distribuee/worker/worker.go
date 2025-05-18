@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"hash/fnv"
 	"log"
 	"math/rand"
 	"net/rpc"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -62,7 +64,7 @@ func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
 		}
 		switch reply.jobName {
 		case "map":
-			doMap(reply.jobName, reply.taskNumber, reply.inFile, reply.nReduce, mapF)
+			DoMap(reply.jobName, reply.taskNumber, reply.inFile, reply.nReduce, mapF)
 			break
 		case "reduce":
 			doReduce(reply.jobName, reply.taskNumber, reply.inFile, reduceF)
@@ -84,14 +86,13 @@ func start() {
 	}
 	var id int
 	client.Call("master.getId", nil, id)
-	os.Mkdir(fmt.Sprintf("./files/worker%d", id), os.ModePerm)
-	os.Chdir(fmt.Sprintf("./files/worker%d", id))
-
-	go worker.simulate(client, 0.1, 0.01)
+	worker.simulate(client, 0.1, 0.01)
 }
+
 func main() {
+
 	for range 5 {
-		start()
+		go start()
 	}
 }
 func (worker Worker) pingMaster(client *rpc.Client) {
@@ -104,10 +105,59 @@ func (worker Worker) pingMaster(client *rpc.Client) {
 }
 
 // TODO: complete the functions
-func doMap(jobName string, mapTaskNumber int, inFile string, nReduce int, mapF func(
-	file string, contents string) []KeyValue) {
+func DoMap(
+	jobName string,
+	mapTaskNumber int,
+	inFile string,
+	nReduce int,
+	mapF func(string, string) []KeyValue,
+) {
+	// Lire le contenu du fichier d'entrée
+	data, _ := os.ReadFile(inFile)
+	content := string(data)
+	// Appliquer la fonction mapF pour obtenir des paires clé-valeur
+	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	// Créer nReduce fichiers, un pour chaque tâche de réduction
+	// utiliser reduceName
+	for i := range nReduce {
+		file, _ := os.Create(fmt.Sprintf("reduce%d.txt", i))
+
+		defer file.Close()
+	}
+	// Partitionner les paires clé-valeur en fonction du hachage de la clé
+	// Calculer la tâche de réduction associée à chaque clé
+	// Écrire la paire clé-valeur dans le fichier approprié
+	for _, v := range kvs {
+		hash := ihash(v.Key)
+		index := hash % uint32(nReduce)
+		file, err := os.OpenFile(fmt.Sprintf("task%dreduce%d.txt", mapTaskNumber, index), os.O_APPEND, 0644)
+		if err != nil {
+			continue
+		}
+		file.WriteString(fmt.Sprintf("%s\n", v.Value))
+	}
+}
+func ihash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
+}
+func mapF(document string, content string) []KeyValue {
+	words := strings.Fields(content)
+	kvs := []KeyValue{}
+
+	for _, word := range words {
+		cleaned := strings.ToLower(strings.Trim(word, ".,!?:"))
+		if cleaned != "" {
+			kvs = append(kvs, KeyValue{Key: cleaned, Value: "1"})
+		}
+	}
+
+	return kvs
+}
+func reduceF(key string, values []string) string {
+	return fmt.Sprintf("%d", len(values))
+}
+func doReduce(jobName string, reduceTaskNumber int, inFile string, reduceF func(key string, values []string) string) {
 
 }
-func mapF(document string, content string) []KeyValue
-func reduceF(key string, values []string) string
-func doReduce(jobName string, reduceTaskNumber int, inFile string, reduceF func(key string, values []string) string)
