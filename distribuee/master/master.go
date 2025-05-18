@@ -1,7 +1,10 @@
 package master
 
 import (
+	"encoding/json"
+	"fmt"
 	"net"
+	"net/http"
 	"net/rpc"
 	"sort"
 	"sync"
@@ -16,10 +19,21 @@ type Task struct {
 	nReduce    int
 }
 type Master struct {
-	tasks   []Task
-	waiting []chan Task
-	mu      sync.Mutex
-	clients []Client
+	tasks     []Task
+	waiting   []chan Task
+	mutex     sync.Mutex
+	clients   []Client
+	id        int
+	completed map[string]bool
+	numtasks  int
+}
+type statusjson struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
+}
+
+type Liststatus struct {
+	lstatus []statusjson
 }
 type Client struct {
 	id   string
@@ -38,47 +52,14 @@ type Args2 struct {
 	taskNumber int
 }
 
-func (master *Master) getTask(args Args, reply *Task) error {
-	taskchan := make(chan Task, 1)
-	master.mu.Lock()
-	if len(master.tasks) > 0 {
-		*reply = master.tasks[0]
-		master.clients = append(master.clients, Client{args.id, *reply, time.Now()})
-		sort.Slice(master.clients, func(i, j int) bool {
-			return master.clients[i].t.Before(master.clients[j].t)
-		})
-		master.tasks = master.tasks[1:]
-		return nil
-	}
-	master.waiting = append(master.waiting, taskchan)
-	master.mu.Unlock()
-	*reply = <-taskchan
-	sort.Slice(master.clients, func(i, j int) bool {
-		return master.clients[i].t.Before(master.clients[j].t)
-	})
-	return nil
+var ls Liststatus
 
-}
-func (master *Master) addTask(task Task) {
-	master.mu.Lock()
-	defer master.mu.Unlock()
-	if len(master.waiting) > 0 {
-		workerChan := master.waiting[0]
-		master.waiting = master.waiting[1:]
-		workerChan <- task
-	} else {
-		master.tasks = append(master.tasks, task)
-	}
-}
-
-// TODO:cpmplete
-func (Master *Master) ReportTaskDone(Args2, reply bool) {
-
-}
 func main() {
 	master := new(Master)
 	rpc.Register(master)
 	listener, err := net.Listen("tcp", ":1234")
+	http.Handle("/", http.FileServer(http.Dir("./web")))
+	http.HandleFunc("/status", handleStatus)
 	if err != nil {
 		return
 	}
@@ -89,6 +70,63 @@ func main() {
 		}
 		go rpc.ServeConn(conn)
 	}
+}
+
+func (master *Master) getId(args *struct{}, id *string) error {
+	*id = fmt.Sprint(master.id)
+	master.id += 1
+	return nil
+}
+func (master *Master) getTask(args Args, reply *Task) error {
+	taskchan := make(chan Task, 1)
+	master.mutex.Lock()
+	defer master.mutex.Unlock()
+	if len(master.tasks) > 0 {
+		*reply = master.tasks[0]
+		master.clients = append(master.clients, Client{args.id, *reply, time.Now()})
+		x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
+		master.completed[x] = false
+		sort.Slice(master.clients, func(i, j int) bool {
+			return master.clients[i].t.Before(master.clients[j].t)
+		})
+		master.tasks = master.tasks[1:]
+		return nil
+	}
+	x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
+	master.completed[x] = false
+	master.waiting = append(master.waiting, taskchan)
+	*reply = <-taskchan
+	sort.Slice(master.clients, func(i, j int) bool {
+		return master.clients[i].t.Before(master.clients[j].t)
+	})
+	return nil
+
+}
+func (master *Master) addTask(task Task) {
+	master.mutex.Lock()
+	defer master.mutex.Unlock()
+	if len(master.waiting) > 0 {
+		workerChan := master.waiting[0]
+		master.waiting = master.waiting[1:]
+		workerChan <- task
+	} else {
+		master.tasks = append(master.tasks, task)
+	}
+}
+
+// TODO:cpmplete
+func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
+	master.mutex.Lock()
+	defer master.mutex.Unlock()
+	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
+	*reply = true
+	return nil
+}
+
+func handleStatus(w http.ResponseWriter, req *http.Request) {
+	w.Header().Set("content-type", "application/json")
+	json.NewEncoder(w).Encode(ls)
+
 }
 func (master *Master) Ping(args Args, reply *bool) error {
 	for i, _ := range master.clients {
