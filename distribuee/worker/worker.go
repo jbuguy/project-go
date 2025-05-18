@@ -62,6 +62,8 @@ func main() {
 	worker := new(Worker)
 	go worker.simulate(client, 0.1, 0.01)
 }
+
+// TODO: complete the functions
 func doMap(jobName string, mapTaskNumber int, inFile string, nReduce int, mapF func(
 	file string, contents string) []KeyValue)
 func mapF(document string, content string) []KeyValue
