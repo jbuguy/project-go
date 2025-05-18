@@ -51,6 +51,7 @@ func AnsName(jobName string) string {
 }
 
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
+	go worker.pingMaster(client)
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{worker.id}, &reply)
