@@ -51,7 +51,8 @@ func AnsName(jobName string) string {
 	return prefix + jobName
 }
 
-func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
+func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
+	worker.pingMaster(client,p1)
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{worker.id}, &reply)
@@ -91,7 +92,7 @@ func main() {
 		go start()
 	}
 }
-func (worker Worker) pingMaster(client *rpc.Client) {
+func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
