@@ -50,10 +50,10 @@ func AnsName(jobName string) string {
 	return prefix + jobName
 }
 
-func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
+func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 	for {
 		var reply Reply1
-		client.Call("master.getTask", Args{}, &reply)
+		client.Call("master.getTask", Args{worker.id}, &reply)
 		random := rand.Float64()
 		if random < p1 {
 			time.Sleep(15)
@@ -71,7 +71,7 @@ func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
 			break
 		}
 		var tmp bool
-		client.Call("master.ReportTaskDone", Args2{reply.jobName, reply.taskNumber}, tmp)
+		client.Call("master.ReportTaskDone", Args2{reply.jobName, reply.taskNumber}, &tmp)
 		if tmp {
 			return
 		}
@@ -85,13 +85,12 @@ func start() {
 		log.Fatal("Dialing:", err)
 	}
 	var id int
-	client.Call("master.getId", nil, id)
+	client.Call("master.getId", nil, &id)
 	worker.simulate(client, 0.1, 0.01)
 }
 
 func main() {
-
-	for range 5 {
+	for i := 0; i < 5; i++ {
 		go start()
 	}
 }
@@ -119,9 +118,11 @@ func DoMap(
 	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
 	// Créer nReduce fichiers, un pour chaque tâche de réduction
 	// utiliser reduceName
+	files := make([]*os.File, nReduce)
 	for i := range nReduce {
-		file, _ := os.Create(fmt.Sprintf("reduce%d.txt", i))
-
+		name := ReduceName(jobName, mapTaskNumber, int(i))
+		file, _ := os.Create(name)
+		files = append(files, file)
 		defer file.Close()
 	}
 	// Partitionner les paires clé-valeur en fonction du hachage de la clé
@@ -130,13 +131,15 @@ func DoMap(
 	for _, v := range kvs {
 		hash := ihash(v.Key)
 		index := hash % uint32(nReduce)
-		file, err := os.OpenFile(fmt.Sprintf("task%dreduce%d.txt", mapTaskNumber, index), os.O_APPEND, 0644)
+		name := ReduceName(jobName, mapTaskNumber, int(index))
+		file, err := os.OpenFile(name, os.O_APPEND, 0644)
 		if err != nil {
 			continue
 		}
 		file.WriteString(fmt.Sprintf("%s\n", v.Value))
 	}
 }
+
 func ihash(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
