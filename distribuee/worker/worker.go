@@ -34,7 +34,8 @@ func (Worker Worker) Ping(args struct{}, reply *string) error {
 	return nil
 }
 
-func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
+func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
+	go worker.pingMaster(client)
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{}, &reply)
@@ -71,9 +72,8 @@ func main() {
 	var reply string
 	client.Call("master.getId", nil, reply)
 	go worker.simulate(client, 0.1, 0.01)
-	go worker.pingMaster(client, reply)
 }
-func (worker Worker) pingMaster(client *rpc.Client, id string) {
+func (worker Worker) pingMaster(client *rpc.Client) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {

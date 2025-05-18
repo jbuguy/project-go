@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/rpc"
 	"sync"
+	"time"
 )
 
 type Task struct {
@@ -17,13 +18,21 @@ type Master struct {
 	tasks   []Task
 	waiting []chan Task
 	mu      sync.Mutex
+	clients []Client
+}
+type Client struct {
+	id   string
+	task Task
+	t    time.Time
 }
 
 type KeyValue struct {
 	Key   string
 	Value string
 }
-type Args struct{}
+type Args struct {
+	id string
+}
 type Args2 struct {
 	jobName    string
 	taskNumber int
@@ -54,6 +63,7 @@ func (master *Master) addTask(task Task) {
 		master.tasks = append(master.tasks, task)
 	}
 }
+
 // TODO:cpmplete
 func (Master *Master) ReportTaskDone(Args2, reply bool) {
 
@@ -66,10 +76,20 @@ func main() {
 		return
 	}
 	for {
-		conn ,err:=listener.Accept()
-		if err !=nil{
+		conn, err := listener.Accept()
+		if err != nil {
 			continue
 		}
 		go rpc.ServeConn(conn)
 	}
+}
+func (master *Master) Ping(args Args, reply *bool) error {
+	for i, _ := range master.clients {
+		if master.clients[i].id==args.id{
+			*reply =true
+			return nil 
+		}
+	}
+	*reply=false
+	return nil
 }
