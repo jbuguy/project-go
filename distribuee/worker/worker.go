@@ -51,15 +51,11 @@ func AnsName(jobName string) string {
 }
 
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
-	go worker.pingMaster(client)
+	go worker.pingMaster(client, p1)
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{worker.id}, &reply)
 		random := rand.Float64()
-		if random < p1 {
-			time.Sleep(15)
-		}
-		random = rand.Float64()
 		if random < p2 {
 			return
 		}
@@ -95,10 +91,14 @@ func main() {
 		go start()
 	}
 }
-func (worker Worker) pingMaster(client *rpc.Client) {
+func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
+		random := rand.Float64()
+		if random < p {
+			time.Sleep(time.Second * 10)
+		}
 		var reply bool
 		client.Call("master.ping", Args{worker.id}, &reply)
 	}
