@@ -26,15 +26,11 @@ type Master struct {
 	id        int
 	completed map[string]bool
 	numtasks  int
-}
-type statusjson struct {
-	TaskID string `json:"task_id"`
-	Status string `json:"status"`
+	nMap      int
+	nReduce   int
+	pass      chan int
 }
 
-type Liststatus struct {
-	lstatus []statusjson
-}
 type Client struct {
 	id   string
 	task Task
@@ -52,14 +48,31 @@ type Args2 struct {
 	taskNumber int
 }
 
+// json variables types
+type statusjson struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
+}
+
+type Liststatus struct {
+	Lstatus []statusjson `json:"stats"`
+}
+type Par1 struct {
+	NMap    int `json:"nMap"`
+	NReduce int `json:"nReduce"`
+}
+
 var ls Liststatus
+var master Master
 
 func main() {
-	master := new(Master)
-	rpc.Register(master)
+	master = Master{id: 0}
+	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
 	http.Handle("/", http.FileServer(http.Dir("./web")))
 	http.HandleFunc("/status", handleStatus)
+	http.HandleFunc("/start", handleStart)
+	http.ListenAndServe(":8080", nil)
 	if err != nil {
 		return
 	}
@@ -70,6 +83,30 @@ func main() {
 		}
 		go rpc.ServeConn(conn)
 	}
+}
+func handleStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	var par Par1
+	err := json.NewDecoder(r.Body).Decode(&par)
+	if err != nil {
+		return
+	}
+	master.nMap = par.NMap
+	master.nMap = par.NReduce
+	go master.run()
+
+}
+func (master *Master) run() {
+	for i := 0; i < master.nMap; i++ {
+		master.addTask(Task{jobName: "map", taskNumber: i})
+	}
+	<-master.pass
+	for i := 0; i < master.nMap; i++ {
+		master.addTask(Task{jobName: "reduce", taskNumber: i})
+	}
+	<-master.pass
 }
 
 func (master *Master) getId(args *struct{}, id *string) error {
@@ -120,6 +157,9 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 	defer master.mutex.Unlock()
 	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
 	*reply = true
+	if len(master.completed) == master.numtasks {
+		master.pass <- 1
+	}
 	return nil
 }
 
