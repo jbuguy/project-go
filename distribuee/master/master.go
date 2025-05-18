@@ -28,10 +28,11 @@ type Master struct {
 	id        int
 	completed map[string]bool
 	numtasks  int
-	nMap      int
-	nReduce   int
-	pass      chan int
+	stage     chan int
 }
+
+var nReduce int
+var nMap int
 
 type Client struct {
 	id   string
@@ -68,36 +69,80 @@ var ls Liststatus
 var master Master
 
 func main() {
-	os.Chdir("./files/master")
-	master = Master{id: 0}
+	setuphttp()
+	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool)}
+	listener := setuprpc()
+	listenWorkers(listener)
+}
+func heartbeat(timeout int) {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		now := time.Now()
+		master.mutex.Lock()
+		clients := []Client{}
+		for _, client := range master.clients {
+			if now.Sub(client.t) < time.Duration(timeout)*time.Second {
+				clients = append(clients, client)
+			} else {
+				fmt.Printf("Worker %s timed out\n", client.id)
+				x := fmt.Sprintf("%s%d", client.task.jobName, client.task.taskNumber)
+				if !master.completed[x] {
+					master.addTask(client.task)
+				}
+			}
+		}
+		master.clients = clients
+		master.mutex.Unlock()
+	}
+}
+
+func setuprpc() net.Listener {
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
-	http.Handle("/", http.FileServer(http.Dir("./web")))
-	http.HandleFunc("/status", handleStatus)
-	http.HandleFunc("/start", handleStart)
-	http.ListenAndServe(":8080", nil)
 	if err != nil {
-		return
+		return nil
 	}
+	return listener
+}
+
+func listenWorkers(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			continue
 		}
+		fmt.Printf("worker %d has connected", master.id)
 		go rpc.ServeConn(conn)
 	}
 }
 
+func setuphttp() {
+	http.Handle("/", http.FileServer(http.Dir("./web")))
+	http.HandleFunc("/status", handleStatus)
+	http.HandleFunc("/start", handleStart)
+	http.ListenAndServe(":8080", nil)
+}
+
 func (master *Master) run() {
-	split("file", 1)
-	for i := range master.nMap {
-		master.addTask(Task{jobName: "map", taskNumber: i})
+	count := split("file", 1)
+	for i := range count {
+		master.addTask(Task{jobName: "map", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i)})
 	}
-	<-master.pass
-	for i := range master.nMap {
-		master.addTask(Task{jobName: "reduce", taskNumber: i})
+	<-master.stage
+	master.clear()
+	for i := range nMap {
+		master.addTask(Task{jobName: "reduce", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i)})
 	}
-	<-master.pass
+	<-master.stage
+	master.clear()
+}
+
+func (master *Master) clear() {
+	master.completed = make(map[string]bool)
+	master.tasks = make([]Task, 0)
+	master.clients = make([]Client, 0)
+	master.waiting = make([]chan Task, 0)
 }
 
 func (master *Master) getId(args *struct{}, id *string) error {
@@ -148,10 +193,22 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 	defer master.mutex.Unlock()
 	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
 	*reply = true
+	remove(master, args.jobName, args.taskNumber)
 	if master.completedTasks() == master.numtasks {
-		master.pass <- 1
+		master.stage <- 1
 	}
 	return nil
+}
+
+func remove(master *Master, jobName string, taskNumber int) {
+	i := 0
+	for j, v := range master.clients {
+		if v.task.taskNumber == taskNumber && v.task.jobName == jobName {
+			i = j
+			break
+		}
+	}
+	master.clients = append(master.clients[:i], master.clients[i+1:]...)
 }
 func (master *Master) completedTasks() int {
 	c := 0
@@ -188,15 +245,15 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	master.nMap = par.NMap
-	master.nMap = par.NReduce
+	nMap = par.NMap
+	nReduce = par.NReduce
 	go master.run()
 
 }
-func split(filename string, lines int) error {
+func split(filename string, lines int) int {
 	file, err := os.Open(filename)
 	if err != nil {
-		return err
+		return 0
 	}
 	sc := bufio.NewScanner(file)
 	part := 1
@@ -214,8 +271,9 @@ func split(filename string, lines int) error {
 		line = 0
 		return
 	}
+	f()
 	for sc.Scan() {
-		if line >= line {
+		if line >= lines {
 			f()
 		}
 		w.WriteString(sc.Text() + "\n")
@@ -225,5 +283,5 @@ func split(filename string, lines int) error {
 		w.Flush()
 		out.Close()
 	}
-	return nil
+	return part
 }

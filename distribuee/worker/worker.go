@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"hash/fnv"
 	"log"
 	"math/rand"
 	"net/rpc"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -48,28 +50,25 @@ func AnsName(jobName string) string {
 	return prefix + jobName
 }
 
-func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
+func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
+	go worker.pingMaster(client, p1)
 	for {
 		var reply Reply1
-		client.Call("master.getTask", Args{}, &reply)
+		client.Call("master.getTask", Args{worker.id}, &reply)
 		random := rand.Float64()
-		if random < p1 {
-			time.Sleep(15)
-		}
-		random = rand.Float64()
 		if random < p2 {
 			return
 		}
 		switch reply.jobName {
 		case "map":
-			doMap(reply.jobName, reply.taskNumber, reply.inFile, reply.nReduce, mapF)
+			DoMap(reply.jobName, reply.taskNumber, reply.inFile, reply.nReduce, mapF)
 			break
 		case "reduce":
 			doReduce(reply.jobName, reply.taskNumber, reply.inFile, reduceF)
 			break
 		}
 		var tmp bool
-		client.Call("master.ReportTaskDone", Args2{reply.jobName, reply.taskNumber}, tmp)
+		client.Call("master.ReportTaskDone", Args2{reply.jobName, reply.taskNumber}, &tmp)
 		if tmp {
 			return
 		}
@@ -83,31 +82,77 @@ func start() {
 		log.Fatal("Dialing:", err)
 	}
 	var id int
-	client.Call("master.getId", nil, id)
-	os.Mkdir(fmt.Sprintf("./files/worker%d", id), os.ModePerm)
-	os.Chdir(fmt.Sprintf("./files/worker%d", id))
-
-	go worker.simulate(client, 0.1, 0.01)
+	client.Call("master.getId", nil, &id)
+	worker.simulate(client, 0.1, 0.01)
 }
+
 func main() {
-	for range 5 {
-		start()
+	for i := 0; i < 5; i++ {
+		go start()
 	}
 }
-func (worker Worker) pingMaster(client *rpc.Client) {
+func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
+		random := rand.Float64()
+		if random < p {
+			time.Sleep(time.Second * 10)
+		}
 		var reply bool
 		client.Call("master.ping", Args{worker.id}, &reply)
 	}
 }
+func DoMap(
+	jobName string,
+	mapTaskNumber int,
+	inFile string,
+	nReduce int,
+	mapF func(string, string) []KeyValue,
+) {
+	data, _ := os.ReadFile(inFile)
+	content := string(data)
+	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	files := make([]*os.File, nReduce)
+	for i := range nReduce {
+		name := ReduceName(jobName, mapTaskNumber, int(i))
+		file, _ := os.Create(name)
+		files = append(files, file)
+		defer file.Close()
+	}
+	for _, v := range kvs {
+		hash := ihash(v.Key)
+		index := hash % uint32(nReduce)
+		name := ReduceName(jobName, mapTaskNumber, int(index))
+		file, err := os.OpenFile(name, os.O_APPEND, 0644)
+		if err != nil {
+			continue
+		}
+		file.WriteString(fmt.Sprintf("%s\n", v.Value))
+	}
+}
 
-// TODO: complete the functions
-func doMap(jobName string, mapTaskNumber int, inFile string, nReduce int, mapF func(
-	file string, contents string) []KeyValue) {
+func ihash(s string) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(s))
+	return h.Sum32()
+}
+func mapF(document string, content string) []KeyValue {
+	words := strings.Fields(content)
+	kvs := []KeyValue{}
+
+	for _, word := range words {
+		cleaned := strings.ToLower(strings.Trim(word, ".,!?:"))
+		if cleaned != "" {
+			kvs = append(kvs, KeyValue{Key: cleaned, Value: "1"})
+		}
+	}
+
+	return kvs
+}
+func reduceF(key string, values []string) string {
+	return fmt.Sprintf("%d", len(values))
+}
+func doReduce(jobName string, reduceTaskNumber int, inFile string, reduceF func(key string, values []string) string) {
 
 }
-func mapF(document string, content string) []KeyValue
-func reduceF(key string, values []string) string
-func doReduce(jobName string, reduceTaskNumber int, inFile string, reduceF func(key string, values []string) string)

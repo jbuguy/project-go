@@ -132,7 +132,7 @@ func mapF(document string, content string) []KeyValue {
 	kvs := []KeyValue{}
 
 	for _, word := range words {
-		cleaned := strings.ToLower(strings.Trim(word, ".,!?\"';:()[]{}"))
+		cleaned := strings.ToLower(strings.Trim(word, ".,!?:"))
 		if cleaned != "" {
 			kvs = append(kvs, KeyValue{Key: cleaned, Value: "1"})
 		}
