@@ -68,14 +68,14 @@ var ls Liststatus
 var master Master
 
 func main() {
-	os.Chdir("./files/master")
+	setuphttp()
 	master = Master{id: 0, pass: make(chan int), completed: make(map[string]bool)}
+	setuprpc()
+}
+
+func setuprpc() {
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
-	http.Handle("/", http.FileServer(http.Dir("./web")))
-	http.HandleFunc("/status", handleStatus)
-	http.HandleFunc("/start", handleStart)
-	http.ListenAndServe(":8080", nil)
 	if err != nil {
 		return
 	}
@@ -87,6 +87,13 @@ func main() {
 		fmt.Printf("worker %d has connected", master.id)
 		go rpc.ServeConn(conn)
 	}
+}
+
+func setuphttp() {
+	http.Handle("/", http.FileServer(http.Dir("./web")))
+	http.HandleFunc("/status", handleStatus)
+	http.HandleFunc("/start", handleStart)
+	http.ListenAndServe(":8080", nil)
 }
 
 func (master *Master) run() {
