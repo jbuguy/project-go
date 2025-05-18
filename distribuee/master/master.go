@@ -84,20 +84,7 @@ func main() {
 		go rpc.ServeConn(conn)
 	}
 }
-func handleStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		return
-	}
-	var par Par1
-	err := json.NewDecoder(r.Body).Decode(&par)
-	if err != nil {
-		return
-	}
-	master.nMap = par.NMap
-	master.nMap = par.NReduce
-	go master.run()
 
-}
 func (master *Master) run() {
 	for i := range master.nMap {
 		master.addTask(Task{jobName: "map", taskNumber: i})
@@ -187,4 +174,18 @@ func (master *Master) Ping(args Args, reply *bool) error {
 	}
 	*reply = false
 	return nil
+}
+func handleStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		return
+	}
+	var par Par1
+	err := json.NewDecoder(r.Body).Decode(&par)
+	if err != nil {
+		return
+	}
+	master.nMap = par.NMap
+	master.nMap = par.NReduce
+	go master.run()
+
 }
