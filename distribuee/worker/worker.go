@@ -19,7 +19,9 @@ type KeyValue struct {
 	Key   string
 	Value string
 }
-type Args struct{}
+type Args struct {
+	id string
+}
 type Reply1 struct {
 	jobName    string
 	taskNumber int
@@ -73,6 +75,14 @@ func main() {
 	}
 
 	go worker.simulate(client, listener, 0.1, 0.01)
+}
+func (worker Worker) pingMaster(client *rpc.Client) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		var reply bool
+		client.Call("master.rpc", Args{worker.id}, &reply)
+	}
 }
 
 // TODO: complete the functions
