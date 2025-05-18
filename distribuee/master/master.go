@@ -85,11 +85,12 @@ func main() {
 }
 func (master *Master) Ping(args Args, reply *bool) error {
 	for i, _ := range master.clients {
-		if master.clients[i].id==args.id{
-			*reply =true
-			return nil 
+		if master.clients[i].id == args.id {
+			master.clients[i].t = time.Now()
+			*reply = true
+			return nil
 		}
 	}
-	*reply=false
+	*reply = false
 	return nil
 }
