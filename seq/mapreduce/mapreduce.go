@@ -86,9 +86,9 @@ func DoMap(
 			CheckError(err, "err:%s")
 			continue
 		}
-		_,err=file.WriteString(fmt.Sprintf("%s\n", v.Value))
-		if err!=nil{
-			CheckError(err,"err:%s")
+		_, err = file.WriteString(fmt.Sprintf("%s\n", v.Value))
+		if err != nil {
+			CheckError(err, "err:%s")
 		}
 
 	}
