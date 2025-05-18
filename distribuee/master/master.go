@@ -3,6 +3,7 @@ package master
 import (
 	"net"
 	"net/rpc"
+	"sort"
 	"sync"
 	"time"
 )
@@ -25,7 +26,6 @@ type Client struct {
 	task Task
 	t    time.Time
 }
-
 type KeyValue struct {
 	Key   string
 	Value string
@@ -43,12 +43,19 @@ func (master *Master) getTask(args Args, reply *Task) error {
 	master.mu.Lock()
 	if len(master.tasks) > 0 {
 		*reply = master.tasks[0]
+		master.clients = append(master.clients, Client{args.id, *reply, time.Now()})
+		sort.Slice(master.clients, func(i, j int) bool {
+			return master.clients[i].t.Before(master.clients[j].t)
+		})
 		master.tasks = master.tasks[1:]
 		return nil
 	}
 	master.waiting = append(master.waiting, taskchan)
 	master.mu.Unlock()
 	*reply = <-taskchan
+	sort.Slice(master.clients, func(i, j int) bool {
+		return master.clients[i].t.Before(master.clients[j].t)
+	})
 	return nil
 
 }
