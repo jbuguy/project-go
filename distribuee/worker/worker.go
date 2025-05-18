@@ -3,6 +3,7 @@ package worker
 import (
 	"log"
 	"math/rand"
+	"net"
 	"net/rpc"
 	"time"
 )
@@ -29,8 +30,12 @@ type Reply1 struct {
 	nReduce    int
 }
 
-func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
-	
+func (Worker Worker) Ping(args struct{}, reply *string) error {
+	*reply = Worker.id
+	return nil
+}
+
+func (simulate Worker) simulate(client *rpc.Client, listener net.Listener, p1, p2 float64) {
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{}, &reply)
@@ -40,7 +45,7 @@ func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
 		}
 		random = rand.Float64()
 		if random < p2 {
-			return
+			listener.Close()
 		}
 		switch reply.jobName {
 		case "map":
@@ -59,13 +64,17 @@ func (simulate Worker) simulate(client *rpc.Client, p1, p2 float64) {
 }
 func main() {
 	var worker Worker
+	rpc.Register(worker)
+	listener, err := net.Listen("tcp", ":1235")
+	conn, err := listener.Accept()
+	go rpc.ServeConn(conn)
 	client, err := rpc.Dial("tcp", "localhost:1234")
 	defer client.Close()
 	if err != nil {
 		log.Fatal("Dialing:", err)
 	}
 
-	go worker.simulate(client, 0.1, 0.01)
+	go worker.simulate(client, listener, 0.1, 0.01)
 }
 func (worker Worker) pingMaster(client *rpc.Client) {
 	ticker := time.NewTicker(3 * time.Second)
