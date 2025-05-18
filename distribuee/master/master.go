@@ -84,18 +84,19 @@ func main() {
 		if err != nil {
 			continue
 		}
+		fmt.Printf("worker %d has connected", master.id)
 		go rpc.ServeConn(conn)
 	}
 }
 
 func (master *Master) run() {
-	split("file", 1)
-	for i := range master.nMap {
-		master.addTask(Task{jobName: "map", taskNumber: i})
+	count := split("file", 1)
+	for i := range count {
+		master.addTask(Task{jobName: "map", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i)})
 	}
 	<-master.pass
 	for i := range master.nMap {
-		master.addTask(Task{jobName: "reduce", taskNumber: i})
+		master.addTask(Task{jobName: "reduce", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i)})
 	}
 	<-master.pass
 }
@@ -193,10 +194,10 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	go master.run()
 
 }
-func split(filename string, lines int) error {
+func split(filename string, lines int) int {
 	file, err := os.Open(filename)
 	if err != nil {
-		return err
+		return 0
 	}
 	sc := bufio.NewScanner(file)
 	part := 1
@@ -215,7 +216,7 @@ func split(filename string, lines int) error {
 		return
 	}
 	for sc.Scan() {
-		if line >= line {
+		if line >= lines {
 			f()
 		}
 		w.WriteString(sc.Text() + "\n")
@@ -225,5 +226,5 @@ func split(filename string, lines int) error {
 		w.Flush()
 		out.Close()
 	}
-	return nil
+	return part
 }
