@@ -3,7 +3,9 @@ package master
 import (
 	"net"
 	"net/rpc"
+	"sort"
 	"sync"
+	"time"
 )
 
 type Task struct {
@@ -17,13 +19,20 @@ type Master struct {
 	tasks   []Task
 	waiting []chan Task
 	mu      sync.Mutex
+	clients []Client
 }
-
+type Client struct {
+	id   string
+	task Task
+	t    time.Time
+}
 type KeyValue struct {
 	Key   string
 	Value string
 }
-type Args struct{}
+type Args struct {
+	id string
+}
 type Args2 struct {
 	jobName    string
 	taskNumber int
@@ -34,12 +43,19 @@ func (master *Master) getTask(args Args, reply *Task) error {
 	master.mu.Lock()
 	if len(master.tasks) > 0 {
 		*reply = master.tasks[0]
+		master.clients = append(master.clients, Client{args.id, *reply, time.Now()})
+		sort.Slice(master.clients, func(i, j int) bool {
+			return master.clients[i].t.Before(master.clients[j].t)
+		})
 		master.tasks = master.tasks[1:]
 		return nil
 	}
 	master.waiting = append(master.waiting, taskchan)
 	master.mu.Unlock()
 	*reply = <-taskchan
+	sort.Slice(master.clients, func(i, j int) bool {
+		return master.clients[i].t.Before(master.clients[j].t)
+	})
 	return nil
 
 }
@@ -65,8 +81,8 @@ func main() {
 		return
 	}
 	for {
-		conn ,err:=listener.Accept()
-		if err !=nil{
+		conn, err := listener.Accept()
+		if err != nil {
 			continue
 		}
 		go rpc.ServeConn(conn)
