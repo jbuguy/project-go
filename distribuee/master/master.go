@@ -70,6 +70,8 @@ func (master *Master) addTask(task Task) {
 		master.tasks = append(master.tasks, task)
 	}
 }
+
+// TODO:cpmplete
 func (Master *Master) ReportTaskDone(Args2, reply bool) {
 
 }
@@ -87,4 +89,15 @@ func main() {
 		}
 		go rpc.ServeConn(conn)
 	}
+}
+func (master *Master) Ping(args Args, reply *bool) error {
+	for i, _ := range master.clients {
+		if master.clients[i].id == args.id {
+			master.clients[i].t = time.Now()
+			*reply = true
+			return nil
+		}
+	}
+	*reply = false
+	return nil
 }
