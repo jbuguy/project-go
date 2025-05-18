@@ -58,42 +58,31 @@ func DoMap(
 	mapTaskNumber int,
 	inFile string,
 	nReduce int,
-	mapF func(contents string) []KeyValue,
+	mapF func(string, string) []KeyValue,
 ) {
-	// Lire le contenu du fichier d'entrée
-	data, err := os.ReadFile(inFile)
-	CheckError(err, "err:%s")
+	data, _ := os.ReadFile(inFile)
 	content := string(data)
-	// Appliquer la fonction mapF pour obtenir des paires clé-valeur
-	kvs := mapF(string(content))
-	// Créer nReduce fichiers, un pour chaque tâche de réduction
-	// utiliser reduceName
-	for i := 0; i < nReduce; i++ {
-		file, err := os.Create(fmt.Sprintf("reduce%d.txt", i))
-		if err != nil {
-			CheckError(err, "err:%s")
-			continue
-		}
+	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	sort.slice(kvs ,func(i, j int) bool {
+		return kvs[i].key < kvs[j].key
+	})
+	files := make([]*os.File, nReduce)
+	
+	for i := range nReduce {
+		name := ReduceName(jobName, mapTaskNumber, i)
+		file, _ := os.Create(name)
+		files = append(files, file)
 		defer file.Close()
 	}
-	// Partitionner les paires clé-valeur en fonction du hachage de la clé
-	// Calculer la tâche de réduction associée à chaque clé
-	// Écrire la paire clé-valeur dans le fichier approprié
 	for _, v := range kvs {
-		hash := ihash(v.Key)
-		index := hash % uint32(nReduce)
-		file, err := os.OpenFile(fmt.Sprintf("reduce%d.txt", index), os.O_APPEND, 0644)
+		index := ihash(v.Key) % uint32(nReduce)
+		name := ReduceName(jobName, mapTaskNumber, int(index))
+		file, err := os.OpenFile(name, os.O_APPEND, 0644)
 		if err != nil {
-			CheckError(err, "err:%s")
 			continue
 		}
-		_, err = file.WriteString(fmt.Sprintf("%s\n", v.Value))
-		if err != nil {
-			CheckError(err, "err:%s")
-		}
-
+		file.WriteString(fmt.Sprintf("%s\n", v.Value))
 	}
-
 }
 
 // doReduce effectue une tâche de réduction en lisant les fichiers
