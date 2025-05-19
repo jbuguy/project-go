@@ -24,7 +24,7 @@ type Master struct {
 	tasks     []Task
 	waiting   []chan Task
 	mutex     sync.Mutex
-	clients   Clients
+	working   Clients
 	id        int
 	completed map[string]bool
 	numtasks  int
@@ -83,25 +83,25 @@ func heartbeat(timeout int) {
 	defer ticker.Stop()
 	for range ticker.C {
 		now := time.Now()
-		master.clients.mutex.Lock()
+		master.working.mutex.Lock()
 		clients := []Client{}
-		for _, client := range master.clients.clients {
+		for _, client := range master.working.clients {
 			if now.Sub(client.t) < time.Duration(timeout)*time.Second {
 				clients = append(clients, client)
 			} else {
-				fmt.Printf("Worker %s timed out\n", client.id)
 				x := fmt.Sprintf("%s%d", client.task.jobName, client.task.taskNumber)
 				if !master.completed[x] {
 					master.addTask(client.task)
 				}
 			}
 		}
-		master.clients.clients = clients
-		master.clients.mutex.Unlock()
+		master.working.clients = clients
+		master.working.mutex.Unlock()
 	}
 }
 
 func setuprpc() net.Listener {
+	go heartbeat(10)
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
 	if err != nil {
@@ -131,18 +131,17 @@ func setuphttp() {
 func (master *Master) run() {
 	count := split("file", 1)
 	for i := range count {
-		master.addTask(Task{jobName: "map", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i)})
+		master.addTask(Task{jobName: "wordcount", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i), typeName: "map", nReduce: nReduce})
 	}
 	<-master.stage
-	master.clear()
-	for i := range nMap {
-		master.addTask(Task{jobName: "reduce", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i)})
+	master.init()
+	for i := range nReduce {
+		master.addTask(Task{jobName: "wordcount", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i), typeName: "reduce", nReduce: count})
 	}
 	<-master.stage
-	master.clear()
 }
 
-func (master *Master) clear() {
+func (master *Master) init() {
 	master.completed = make(map[string]bool)
 	master.tasks = make([]Task, 0)
 	master.waiting = make([]chan Task, 0)
@@ -159,11 +158,11 @@ func (master *Master) getTask(args Args, reply *Task) error {
 	defer master.mutex.Unlock()
 	if len(master.tasks) > 0 {
 		*reply = master.tasks[0]
-		master.clients.clients = append(master.clients.clients, Client{args.id, *reply, time.Now()})
+		master.working.clients = append(master.working.clients, Client{args.id, *reply, time.Now()})
 		x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
 		master.completed[x] = false
-		sort.Slice(master.clients.clients, func(i, j int) bool {
-			return master.clients.clients[i].t.Before(master.clients.clients[j].t)
+		sort.Slice(master.working.clients, func(i, j int) bool {
+			return master.working.clients[i].t.Before(master.working.clients[j].t)
 		})
 		master.tasks = master.tasks[1:]
 		return nil
@@ -172,8 +171,8 @@ func (master *Master) getTask(args Args, reply *Task) error {
 	master.completed[x] = false
 	master.waiting = append(master.waiting, taskchan)
 	*reply = <-taskchan
-	sort.Slice(master.clients.clients, func(i, j int) bool {
-		return master.clients.clients[i].t.Before(master.clients.clients[j].t)
+	sort.Slice(master.working.clients, func(i, j int) bool {
+		return master.working.clients[i].t.Before(master.working.clients[j].t)
 	})
 	return nil
 
@@ -205,15 +204,15 @@ func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
 
 func remove(master *Master, jobName string, taskNumber int) {
 	i := 0
-	master.clients.mutex.Lock()
-	defer master.clients.mutex.Unlock()
-	for j, v := range master.clients.clients {
+	master.working.mutex.Lock()
+	defer master.working.mutex.Unlock()
+	for j, v := range master.working.clients {
 		if v.task.taskNumber == taskNumber && v.task.jobName == jobName {
 			i = j
 			break
 		}
 	}
-	master.clients.clients = append(master.clients.clients[:i], master.clients.clients[i+1:]...)
+	master.working.clients = append(master.working.clients[:i], master.working.clients[i+1:]...)
 }
 func (master *Master) completedTasks() int {
 	c := 0
@@ -231,9 +230,9 @@ func handleStatus(w http.ResponseWriter, req *http.Request) {
 
 }
 func (master *Master) Ping(args Args, reply *bool) error {
-	for i := range master.clients.clients {
-		if master.clients.clients[i].id == args.id {
-			master.clients.clients[i].t = time.Now()
+	for i := range master.working.clients {
+		if master.working.clients[i].id == args.id {
+			master.working.clients[i].t = time.Now()
 			*reply = true
 			return nil
 		}
