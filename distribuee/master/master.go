@@ -17,7 +17,7 @@ type Task struct {
 	jobName    string
 	taskNumber int
 	inFile     string
-	funcName   string
+	typeName   string
 	nReduce    int
 }
 type Master struct {
