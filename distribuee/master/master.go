@@ -56,7 +56,7 @@ var master Master
 
 func main() {
 	go setuphttp()
-	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool), lifeStop: make(chan bool,1)}
+	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool), lifeStop: make(chan bool, 1)}
 	listener := setuprpc()
 	listenWorkers(listener)
 }
@@ -106,6 +106,7 @@ func (master *Master) run() {
 	log.Print("files splited to ", count)
 	log.Print("starting mapping stage")
 	master.numtasks = count
+	master.lifeStop = make(chan bool)
 	go heartbeat(10)
 	for i := range count {
 		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("%s.part%d.txt", "file.txt", i+1), TypeName: "map", Number: nReduce})
@@ -119,7 +120,7 @@ func (master *Master) run() {
 		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
 	}
 	<-master.stage
-	master.lifeStop <- true
+	close(master.lifeStop)
 	log.Print("reduce stage ended")
 	var resFiles []string
 	for i := range nReduce {
