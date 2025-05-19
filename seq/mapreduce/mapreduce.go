@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -80,7 +81,7 @@ func DoReduce(
 	// Créer une map pour stocker les valeurs par clé
 	m := make(map[string][]string)
 	// Lire les fichiers intermédiaires produits par chaque tâche map
-	for i := 0; i < nMap; i++ {
+	for i := range nMap {
 		// Ouvrir le fichier pour la tâche de mappage i
 		file, _ := os.Open(ReduceName(jobName, i, reduceTaskNumber))
 		// Lire les paires clé-valeur du fichier
@@ -94,15 +95,16 @@ func DoReduce(
 	// Ouvrir le fichier de sortie pour la tâche de réduction
 	// utiliser mergeName
 	outName := MergeName(jobName, reduceTaskNumber)
-	file, _ := os.OpenFile(outName, os.O_APPEND|os.O_CREATE, 0644)
+	file, _ := os.OpenFile(outName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	// Appliquer la fonction de réduction à chaque clé
 	for key, values := range m {
 		// Appliquer reduceF pour réduire les valeurs associées à cette clé
 		// Écrire la clé et la valeur réduite dans le fichier de sortie
 		res := reduceF(key, values)
-		file.WriteString(res + "\n")
+		file.WriteString(key + " " + res + "\n")
 	}
 }
+
 func DoMap(
 	jobName string,
 	mapTaskNumber int,
@@ -110,27 +112,25 @@ func DoMap(
 	nReduce int,
 	mapF func(string, string) []KeyValue,
 ) {
-	data, _ := os.ReadFile(inFile)
+	data, err := os.ReadFile(prefix + inFile)
+	if err != nil {
+		log.Fatal(err)
+		return
+	}
 	content := string(data)
-	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	kvs := mapF(inFile, string(content))
 	sort.Slice(kvs, func(i, j int) bool {
 		return kvs[i].Key < kvs[j].Key
 	})
-	files := make([]*os.File, nReduce)
-
-	for i := range nReduce {
-		name := ReduceName(jobName, mapTaskNumber, i)
-		file, _ := os.Create(name)
-		files = append(files, file)
-		defer file.Close()
-	}
 	for _, v := range kvs {
 		index := ihash(v.Key) % uint32(nReduce)
 		name := ReduceName(jobName, mapTaskNumber, int(index))
-		file, err := os.OpenFile(name, os.O_APPEND, 0644)
+		file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+
 		if err != nil {
 			continue
 		}
-		file.WriteString(fmt.Sprintf("%s\n", v.Value))
+		file.WriteString(fmt.Sprintf("%s %s\n", v.Key, v.Value))
+		file.Close()
 	}
 }
