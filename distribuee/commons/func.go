@@ -48,8 +48,8 @@ func CleanIntermediary(jobName string, nMap, nReduce int) {
 	// Supprimer les fichiers intermédiaires produits les tâches map
 	for reduceTNbr := 0; reduceTNbr < nReduce; reduceTNbr++ {
 		for mapTNbr := 0; mapTNbr < nMap; mapTNbr++ {
-			os.Remove(ReduceName(jobName, mapTNbr, reduceTNbr))
+			os.Remove("." + ReduceName(jobName, mapTNbr, reduceTNbr))
 		}
-		os.Remove(MergeName(jobName, reduceTNbr))
+		os.Remove("." + MergeName(jobName, reduceTNbr))
 	}
 }

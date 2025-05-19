@@ -9,7 +9,8 @@ import (
 
 func setuphttp() {
 	fmt.Println("init http")
-	http.Handle("/", http.FileServer(http.Dir("./web")))
+
+	http.Handle("/", http.FileServer(http.Dir("../web")))
 	http.HandleFunc("/status", handleStatus)
 	http.HandleFunc("/start", handleStart)
 	fmt.Println("finished init http")

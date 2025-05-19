@@ -15,8 +15,7 @@ import (
 )
 
 type Worker struct {
-	id   string
-	stop chan bool
+	id string
 }
 
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
@@ -44,11 +43,6 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 			DoReduce(reply.JobName, reply.TaskNumber, reply.Number, reduceF)
 		}
 		var tmp bool
-		switch {
-		case <-worker.stop:
-			return
-		default:
-		}
 		log.Printf("reporting to  master that the task %s of job %s %d is done", reply.TypeName, reply.JobName, reply.TaskNumber)
 		err = client.Call("Master.ReportTaskDone", commons.Args2{JobName: reply.JobName, TaskNumber: reply.TaskNumber}, &tmp)
 		if err != nil {
@@ -89,7 +83,6 @@ func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 		workerId := commons.Args{Id: worker.id}
 		client.Call("Master.Ping", workerId, &reply)
 		if !reply {
-			worker.stop <- true
 			break
 		}
 	}
@@ -113,7 +106,8 @@ func DoMap(
 		return kvs[i].Key < kvs[j].Key
 	})
 	for i := range nReduce {
-		os.Create(commons.ReduceName(jobName, mapTaskNumber, int(i)))
+		file, _ := os.OpenFile(commons.ReduceName(jobName, mapTaskNumber, i), os.O_CREATE|os.O_TRUNC, 0644)
+		file.Close()
 	}
 	for _, kv := range kvs {
 		index := ihash(kv.Key) % uint32(nReduce)
@@ -178,7 +172,7 @@ func DoReduce(
 	// Ouvrir le fichier de sortie pour la tâche de réduction
 	// utiliser mergeName
 	outName := commons.MergeName(jobName, reduceTaskNumber)
-	file, _ := os.OpenFile(outName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, _ := os.OpenFile(outName, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 
