@@ -181,6 +181,12 @@ func (master *Master) GetTask(args Args, reply *Task) error {
 	if len(master.tasks) > 0 {
 
 		*reply = master.tasks[0]
+		master.working.clients = append(master.working.clients, Client{args.id, *reply, time.Now()})
+		x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
+		master.completed[x] = false
+		sort.Slice(master.working.clients, func(i, j int) bool {
+			return master.working.clients[i].t.Before(master.working.clients[j].t)
+		})
 		master.tasks = master.tasks[1:]
 		master.assignTask(args.Id, reply)
 		master.mutex.Unlock()
