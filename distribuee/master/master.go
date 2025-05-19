@@ -181,7 +181,7 @@ func (master *Master) GetTask(args Args, reply *Task) error {
 	if len(master.tasks) > 0 {
 
 		*reply = master.tasks[0]
-		master.working.clients = append(master.working.clients, Client{args.id, *reply, time.Now()})
+		master.working.clients = append(master.working.clients, Client{args.Id, *reply, time.Now()})
 		x := fmt.Sprintf("%s%d", reply.JobName, reply.TaskNumber)
 		master.completed[x] = false
 		sort.Slice(master.working.clients, func(i, j int) bool {
