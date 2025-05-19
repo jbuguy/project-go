@@ -15,7 +15,8 @@ import (
 )
 
 type Worker struct {
-	id string
+	id         string
+	shouldWork bool
 }
 type Args2 struct {
 	jobName    string
@@ -53,7 +54,7 @@ func AnsName(jobName string) string {
 }
 
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
-	worker.pingMaster(client, p1)
+	go worker.pingMaster(client, p1)
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{worker.id}, &reply)
@@ -78,20 +79,20 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 }
 func start() {
 	var worker Worker
-	client, err := rpc.Dial("tcp", "localhost:1234")
-	defer client.Close()
-	if err != nil {
-		log.Fatal("Dialing:", err)
+	for {
+		client, err := rpc.Dial("tcp", "localhost:1234")
+		if err != nil {
+			log.Fatal("Dialing:", err)
+		}
+		var id int
+		client.Call("master.getId", nil, &id)
+		worker.simulate(client, 0.1, 0.01)
+		client.Close()
 	}
-	var id int
-	client.Call("master.getId", nil, &id)
-	worker.simulate(client, 0.1, 0.01)
 }
 
 func main() {
-	for i := 0; i < 5; i++ {
-		go start()
-	}
+	start()
 }
 func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 	ticker := time.NewTicker(3 * time.Second)
@@ -103,7 +104,11 @@ func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 		}
 		var reply bool
 		client.Call("master.ping", Args{worker.id}, &reply)
+		if !reply {
+			break
+		}
 	}
+
 }
 func DoMap(
 	jobName string,
