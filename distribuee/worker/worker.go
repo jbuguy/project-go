@@ -19,25 +19,25 @@ type Worker struct {
 	shouldWork bool
 }
 type Args2 struct {
-	jobName    string
-	taskNumber int
+	JobName    string
+	TaskNumber int
 }
 type KeyValue struct {
 	Key   string
 	Value string
 }
 type Args struct {
-	id string
+	Id string
 }
-type Reply1 struct {
-	jobName    string
-	taskNumber int
-	inFile     string
-	typeName   string
-	nReduce    int
+type Task struct {
+	JobName    string
+	TaskNumber int
+	InFile     string
+	TypeName   string
+	Number     int
 }
 
-const prefix = "disttmp."
+const prefix = "./distribuee/files/"
 
 func ReduceName(jobName string, mapTask int, reduceTask int) string {
 	return prefix + jobName + "-" + strconv.Itoa(mapTask) + "-" + strconv.Itoa(reduceTask)
@@ -56,22 +56,34 @@ func AnsName(jobName string) string {
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 	go worker.pingMaster(client, p1)
 	for {
-		var reply Reply1
-		client.Call("master.getTask", Args{worker.id}, &reply)
+		var reply Task
+		workerId := Args{worker.id}
+		err := client.Call("Master.GetTask", workerId, &reply)
+		if err != nil {
+			log.Fatal(err)
+		}
+		if reply.TypeName == "" {
+			log.Println(reply)
+			return
+		}
 		random := rand.Float64()
 		if random < p2 {
 			return
 		}
-		switch reply.typeName {
+		switch reply.TypeName {
 		case "map":
-			DoMap(reply.jobName, reply.taskNumber, reply.inFile, reply.nReduce, mapF)
+			DoMap(reply.JobName, reply.TaskNumber, reply.InFile, reply.Number, mapF)
 			break
 		case "reduce":
-			DoReduce(reply.jobName, reply.taskNumber, reply.nReduce, reduceF)
+			DoReduce(reply.JobName, reply.TaskNumber, reply.Number, reduceF)
 			break
 		}
 		var tmp bool
-		client.Call("master.ReportTaskDone", Args2{reply.jobName, reply.taskNumber}, &tmp)
+		log.Printf("telling master that the task %s of job %s %d", reply.TypeName, reply.JobName, reply.TaskNumber)
+		err = client.Call("Master.ReportTaskDone", Args2{reply.JobName, reply.TaskNumber}, &tmp)
+		if err != nil {
+			log.Fatal(err)
+		}
 		if tmp {
 			return
 		}
@@ -84,8 +96,9 @@ func start() {
 		if err != nil {
 			log.Fatal("Dialing:", err)
 		}
-		var id int
-		client.Call("master.getId", nil, &id)
+		var a struct{}
+		client.Call("Master.GetId", a, &(worker.id))
+		fmt.Println("id", worker.id)
 		worker.simulate(client, 0.001, 0.001)
 		client.Close()
 	}
@@ -100,10 +113,11 @@ func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 	for range ticker.C {
 		random := rand.Float64()
 		if random < p {
-			time.Sleep(time.Second * 10)
+			time.Sleep(time.Second * 1)
 		}
 		var reply bool
-		client.Call("master.ping", Args{worker.id}, &reply)
+		workerId := Args{worker.id}
+		client.Call("Master.Ping", workerId, &reply)
 		if !reply {
 			break
 		}
@@ -117,29 +131,28 @@ func DoMap(
 	nReduce int,
 	mapF func(string, string) []KeyValue,
 ) {
-	data, _ := os.ReadFile(inFile)
+	log.Print("mapping")
+	data, err := os.ReadFile(prefix + inFile)
+	if err != nil {
+		log.Printf("mapper %d  cant read file %s", mapTaskNumber, inFile)
+	}
 	content := string(data)
-	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	kvs := mapF(inFile, string(content))
 	sort.Slice(kvs, func(i, j int) bool {
 		return kvs[i].Key < kvs[j].Key
 	})
-	files := make([]*os.File, nReduce)
-
-	for i := range nReduce {
-		name := ReduceName(jobName, mapTaskNumber, i)
-		file, _ := os.Create(name)
-		files = append(files, file)
-		defer file.Close()
-	}
 	for _, v := range kvs {
 		index := ihash(v.Key) % uint32(nReduce)
 		name := ReduceName(jobName, mapTaskNumber, int(index))
-		file, err := os.OpenFile(name, os.O_APPEND, 0644)
+		file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+
 		if err != nil {
 			continue
 		}
-		file.WriteString(fmt.Sprintf("%s\n", v.Value))
+		file.WriteString(fmt.Sprintf("%s %s\n", v.Key, v.Value))
+		file.Close()
 	}
+	log.Print("mapping avec sucess")
 }
 
 func ihash(s string) uint32 {
@@ -172,7 +185,7 @@ func DoReduce(
 	// Créer une map pour stocker les valeurs par clé
 	m := make(map[string][]string)
 	// Lire les fichiers intermédiaires produits par chaque tâche map
-	for i := 0; i < nMap; i++ {
+	for i := range nMap {
 		// Ouvrir le fichier pour la tâche de mappage i
 		file, _ := os.Open(ReduceName(jobName, i, reduceTaskNumber))
 		// Lire les paires clé-valeur du fichier
@@ -186,12 +199,12 @@ func DoReduce(
 	// Ouvrir le fichier de sortie pour la tâche de réduction
 	// utiliser mergeName
 	outName := MergeName(jobName, reduceTaskNumber)
-	file, _ := os.OpenFile(outName, os.O_APPEND|os.O_CREATE, 0644)
+	file, _ := os.OpenFile(outName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	// Appliquer la fonction de réduction à chaque clé
 	for key, values := range m {
 		// Appliquer reduceF pour réduire les valeurs associées à cette clé
 		// Écrire la clé et la valeur réduite dans le fichier de sortie
 		res := reduceF(key, values)
-		file.WriteString(res + "\n")
+		file.WriteString(key + " " + res + "\n")
 	}
 }
