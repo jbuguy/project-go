@@ -94,7 +94,6 @@ func heartbeat(timeout int) {
 			} else {
 				x := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
 				if !master.completed[x] {
-					fmt.Println("removed client ", client.id)
 					master.addTask(client.task)
 				}
 			}

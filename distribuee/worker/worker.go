@@ -84,7 +84,7 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if tmp {
+		if !tmp {
 			return
 		}
 	}
