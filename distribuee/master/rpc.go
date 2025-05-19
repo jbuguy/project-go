@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/rpc"
 	"project/dist/commons"
-	"sort"
 	"time"
 )
 
@@ -31,12 +30,9 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	if len(master.tasks) > 0 {
 
 		*reply = master.tasks[0]
-		master.working.clients = append(master.working.clients, Client{args.Id, *reply, time.Now()})
+		master.working.clients[args.Id] = Client{*reply, time.Now()}
 		x := fmt.Sprintf("%s%d", reply.JobName, reply.TaskNumber)
 		master.completed[x] = false
-		sort.Slice(master.working.clients, func(i, j int) bool {
-			return master.working.clients[i].t.Before(master.working.clients[j].t)
-		})
 		master.tasks = master.tasks[1:]
 		master.assignTask(args.Id, reply)
 		master.mutex.Unlock()
@@ -68,13 +64,13 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 }
 func (master *Master) Ping(args commons.Args, reply *bool) error {
 	log.Println(args.Id)
-	for i := range master.working.clients {
-		if master.working.clients[i].id == args.Id {
-			master.working.clients[i].t = time.Now()
-			*reply = true
-			return nil
-		}
+	client, ok := master.working.clients[args.Id]
+	if !ok {
+		*reply = false
+		return nil
 	}
-	*reply = false
+	client.t = time.Now()
+	master.working.clients[args.Id] = client
+	*reply = true
 	return nil
 }

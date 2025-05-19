@@ -8,8 +8,6 @@ import (
 	"net/rpc"
 	"os"
 	"project/dist/commons"
-	"slices"
-	"sort"
 	"sync"
 	"time"
 )
@@ -26,14 +24,13 @@ type Master struct {
 	lifeStop  chan bool
 }
 type Clients struct {
-	clients []Client
+	clients map[string]Client
 	mutex   sync.Mutex
 }
 
 var nReduce int
 
 type Client struct {
-	id   string
 	task commons.Task
 	t    time.Time
 }
@@ -56,25 +53,23 @@ var master Master
 
 func main() {
 	go setuphttp()
-	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool), lifeStop: make(chan bool, 1)}
+	master = Master{id: 0, stage: make(chan int), working: Clients{clients: make(map[string]Client)}, completed: make(map[string]bool), lifeStop: make(chan bool, 1)}
 	listener := setuprpc()
 	listenWorkers(listener)
 }
 func heartbeat(timeout int) {
 	ticker := time.NewTicker(time.Second * time.Duration(timeout))
 	defer ticker.Stop()
-	for range ticker.C {
-		now := time.Now()
-		master.working.mutex.Lock()
-		clients := []Client{}
-		for _, client := range master.working.clients {
-			switch {
-			case <-master.lifeStop:
-				return
-			default:
+	for {
+		select {
+		case <-ticker.C:
+			now := time.Now()
+			master.working.mutex.Lock()
+			clients := make(map[string]Client)
+			for id, client := range master.working.clients {
 				if now.Sub(client.t) < time.Duration(timeout)*time.Second {
-					fmt.Println("added client", client.id)
-					clients = append(clients, client)
+					fmt.Println("added client", id)
+					clients[id] = client
 				} else {
 					x := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
 					if !master.completed[x] {
@@ -82,9 +77,11 @@ func heartbeat(timeout int) {
 					}
 				}
 			}
+			master.working.clients = clients
+			master.working.mutex.Unlock()
+		case <-master.lifeStop:
+			return
 		}
-		master.working.clients = clients
-		master.working.mutex.Unlock()
 	}
 }
 
@@ -140,12 +137,10 @@ func (master *Master) init() {
 }
 
 func (master *Master) assignTask(id string, task *commons.Task) {
-	master.working.clients = append(master.working.clients, Client{id, *task, time.Now()})
+	master.working.clients[id] = Client{*task, time.Now()}
 	key := fmt.Sprintf("%s%d", task.JobName, task.TaskNumber)
 	master.completed[key] = false
-	sort.Slice(master.working.clients, func(i, j int) bool {
-		return master.working.clients[i].t.Before(master.working.clients[j].t)
-	})
+
 }
 
 func (master *Master) addTask(task commons.Task) {
@@ -161,7 +156,7 @@ func (master *Master) addTask(task commons.Task) {
 }
 
 func remove(master *Master, jobName string, taskNumber int) {
-	i := 0
+	i := ""
 	master.working.mutex.Lock()
 	defer master.working.mutex.Unlock()
 	for j, v := range master.working.clients {
@@ -170,7 +165,7 @@ func remove(master *Master, jobName string, taskNumber int) {
 			break
 		}
 	}
-	master.working.clients = slices.Delete(master.working.clients, i, i+1)
+	delete(master.working.clients, i)
 }
 func (master *Master) completedTasks() int {
 	c := 0
