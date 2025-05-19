@@ -16,6 +16,60 @@ import (
 	"time"
 )
 
+type Observer interface {
+	notify(*Master)
+}
+type subject interface {
+	attach(Observer)
+	dettach(Observer)
+	notifyAll()
+}
+type State_Observer struct {
+	Lstatus []statusjson `json:"stats"`
+}
+type Progess_Observer struct {
+	Progress float64 `json:"progress"`
+}
+
+func (pr *Progess_Observer) notify(master *Master) {
+	pr.Progress = 100 * float64(master.completedTasks()) / float64(master.numtasks)
+}
+func (state_o *State_Observer) notify(master *Master) {
+	state_o.Lstatus = make([]statusjson, 0)
+	for i, v := range master.completed {
+		tmp := ""
+		if v {
+			tmp = "completed"
+		} else {
+			tmp = "working"
+		}
+		state_o.Lstatus = append(state_o.Lstatus, statusjson{i, tmp})
+	}
+	for _, v := range master.tasks {
+		state_o.Lstatus = append(state_o.Lstatus, statusjson{fmt.Sprint(v.JobName, " ", v.TaskNumber), "waiting"})
+	}
+}
+
+func (m *Master) attach(o Observer) {
+	m.observers = append(m.observers, o)
+}
+
+func (m *Master) dettach(o Observer) {
+	var observers []Observer
+	for _, observer := range m.observers {
+		if observer != o {
+			observers = append(observers, observer)
+		}
+	}
+	m.observers = observers
+}
+
+func (m *Master) notifyAll() {
+	for _, observer := range m.observers {
+		observer.notify(m)
+	}
+}
+
 type Master struct {
 	tasks     []commons.Task
 	waiting   []chan commons.Task
@@ -26,6 +80,7 @@ type Master struct {
 	numtasks  int
 	stage     chan int
 	lifeStop  chan bool
+	observers []Observer
 }
 type Clients struct {
 	clients []Client
@@ -56,10 +111,14 @@ type Par1 struct {
 
 var ls Liststatus
 var master Master
+var o1 State_Observer
+var o2 Progess_Observer
 
 func main() {
 	go setuphttp()
 	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool)}
+	master.attach(&o1)
+	master.attach(&o2)
 	listener := setuprpc()
 	listenWorkers(listener)
 }
