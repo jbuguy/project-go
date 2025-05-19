@@ -52,7 +52,7 @@ func AnsName(jobName string) string {
 }
 
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
-	worker.pingMaster(client,p1)
+	worker.pingMaster(client, p1)
 	for {
 		var reply Reply1
 		client.Call("master.getTask", Args{worker.id}, &reply)
@@ -114,11 +114,11 @@ func DoMap(
 	data, _ := os.ReadFile(inFile)
 	content := string(data)
 	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
-	sort.slice(kvs ,func(i, j int) bool {
-		return kvs[i].key < kvs[j].key
+	sort.Slice(kvs, func(i, j int) bool {
+		return kvs[i].Key < kvs[j].Key
 	})
 	files := make([]*os.File, nReduce)
-	
+
 	for i := range nReduce {
 		name := ReduceName(jobName, mapTaskNumber, i)
 		file, _ := os.Create(name)
