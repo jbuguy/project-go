@@ -4,21 +4,23 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
+	"slices"
 	"sort"
 	"sync"
 	"time"
 )
 
 type Task struct {
-	jobName    string
-	taskNumber int
-	inFile     string
-	typeName   string
-	nReduce    int
+	JobName    string
+	TaskNumber int
+	InFile     string
+	TypeName   string
+	Number     int
 }
 type Master struct {
 	tasks     []Task
@@ -29,6 +31,7 @@ type Master struct {
 	completed map[string]bool
 	numtasks  int
 	stage     chan int
+	lifeStop  chan bool
 }
 type Clients struct {
 	clients []Client
@@ -48,11 +51,11 @@ type KeyValue struct {
 	Value string
 }
 type Args struct {
-	id string
+	Id string
 }
 type Args2 struct {
-	jobName    string
-	taskNumber int
+	JobName    string
+	TaskNumber int
 }
 
 // json variables types
@@ -73,25 +76,31 @@ var ls Liststatus
 var master Master
 
 func main() {
-	setuphttp()
+	go setuphttp()
 	master = Master{id: 0, stage: make(chan int), completed: make(map[string]bool)}
 	listener := setuprpc()
 	listenWorkers(listener)
 }
 func heartbeat(timeout int) {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(time.Second * time.Duration(timeout))
 	defer ticker.Stop()
 	for range ticker.C {
 		now := time.Now()
 		master.working.mutex.Lock()
 		clients := []Client{}
 		for _, client := range master.working.clients {
-			if now.Sub(client.t) < time.Duration(timeout)*time.Second {
-				clients = append(clients, client)
-			} else {
-				x := fmt.Sprintf("%s%d", client.task.jobName, client.task.taskNumber)
-				if !master.completed[x] {
-					master.addTask(client.task)
+			switch {
+			case <-master.lifeStop:
+				return
+			default:
+				if now.Sub(client.t) < time.Duration(timeout)*time.Second {
+					fmt.Println("added client", client.id)
+					clients = append(clients, client)
+				} else {
+					x := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
+					if !master.completed[x] {
+						master.addTask(client.task)
+					}
 				}
 			}
 		}
@@ -101,44 +110,58 @@ func heartbeat(timeout int) {
 }
 
 func setuprpc() net.Listener {
-	go heartbeat(10)
+	fmt.Println("init rpc")
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
 	if err != nil {
 		return nil
 	}
+	fmt.Println("finished init rpc")
 	return listener
 }
 
 func listenWorkers(listener net.Listener) {
 	for {
+		fmt.Println("waiting for connection")
 		conn, err := listener.Accept()
 		if err != nil {
 			continue
 		}
-		fmt.Printf("worker %d has connected", master.id)
+		fmt.Println("serving client ", master.id)
 		go rpc.ServeConn(conn)
 	}
 }
 
 func setuphttp() {
-	http.Handle("/", http.FileServer(http.Dir("./web")))
+	fmt.Println("init http")
+	http.Handle("/", http.FileServer(http.Dir("./distribuee/web")))
 	http.HandleFunc("/status", handleStatus)
 	http.HandleFunc("/start", handleStart)
+	fmt.Println("finished init http")
 	http.ListenAndServe(":8080", nil)
 }
 
 func (master *Master) run() {
-	count := split("file", 1)
+	log.Print("going to split the file")
+	count := split("../files/file.txt", 1)
+	log.Print("files splited to ", count)
+	log.Print("starting mapping stage")
+	master.numtasks = count
+	go heartbeat(10)
 	for i := range count {
-		master.addTask(Task{jobName: "wordcount", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i), typeName: "map", nReduce: nReduce})
+		master.addTask(Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("file.txt.part%d.txt", i+1), TypeName: "map", Number: nReduce})
 	}
 	<-master.stage
+	log.Print("mapping stage ended")
 	master.init()
+	log.Print("starting reduce stage")
+	master.numtasks = nReduce
 	for i := range nReduce {
-		master.addTask(Task{jobName: "wordcount", taskNumber: i, inFile: fmt.Sprintf("disttmp.part%d", i), typeName: "reduce", nReduce: count})
+		master.addTask(Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
 	}
 	<-master.stage
+	master.lifeStop <- true
+	log.Print("reduce stage ended")
 }
 
 func (master *Master) init() {
@@ -147,36 +170,49 @@ func (master *Master) init() {
 	master.waiting = make([]chan Task, 0)
 }
 
-func (master *Master) getId(args *struct{}, id *string) error {
-	*id = fmt.Sprint(master.id)
+func (master *Master) GetId(args *struct{}, id *string) error {
+	*id = fmt.Sprintf("%d", master.id)
 	master.id += 1
 	return nil
 }
-func (master *Master) getTask(args Args, reply *Task) error {
-	taskchan := make(chan Task, 1)
+func (master *Master) GetTask(args Args, reply *Task) error {
+	log.Printf("worker %s trying to get a task", args.Id)
 	master.mutex.Lock()
-	defer master.mutex.Unlock()
 	if len(master.tasks) > 0 {
+
 		*reply = master.tasks[0]
 		master.working.clients = append(master.working.clients, Client{args.id, *reply, time.Now()})
-		x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
+		x := fmt.Sprintf("%s%d", reply.JobName, reply.TaskNumber)
 		master.completed[x] = false
 		sort.Slice(master.working.clients, func(i, j int) bool {
 			return master.working.clients[i].t.Before(master.working.clients[j].t)
 		})
 		master.tasks = master.tasks[1:]
+		master.assignTask(args.Id, reply)
+		master.mutex.Unlock()
 		return nil
 	}
-	x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
-	master.completed[x] = false
+	fmt.Println("no waiting task ")
+	taskchan := make(chan Task, 1)
 	master.waiting = append(master.waiting, taskchan)
+	master.mutex.Unlock()
+	fmt.Println("waiting for a task to be available")
 	*reply = <-taskchan
+	master.mutex.Lock()
+	master.assignTask(args.Id, reply)
+	master.mutex.Unlock()
+	return nil
+}
+
+func (master *Master) assignTask(id string, task *Task) {
+	master.working.clients = append(master.working.clients, Client{id, *task, time.Now()})
+	key := fmt.Sprintf("%s%d", task.JobName, task.TaskNumber)
+	master.completed[key] = false
 	sort.Slice(master.working.clients, func(i, j int) bool {
 		return master.working.clients[i].t.Before(master.working.clients[j].t)
 	})
-	return nil
-
 }
+
 func (master *Master) addTask(task Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
@@ -191,12 +227,14 @@ func (master *Master) addTask(task Task) {
 
 // TODO:cpmplete
 func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
+	log.Print("task: ", args)
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
-	master.completed[fmt.Sprintf("%s%d", args.jobName, args.taskNumber)] = true
+	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
 	*reply = true
-	remove(master, args.jobName, args.taskNumber)
+	remove(master, args.JobName, args.TaskNumber)
 	if master.completedTasks() == master.numtasks {
+		log.Printf("stage completed pasiing to next stage")
 		master.stage <- 1
 	}
 	return nil
@@ -207,12 +245,12 @@ func remove(master *Master, jobName string, taskNumber int) {
 	master.working.mutex.Lock()
 	defer master.working.mutex.Unlock()
 	for j, v := range master.working.clients {
-		if v.task.taskNumber == taskNumber && v.task.jobName == jobName {
+		if v.task.TaskNumber == taskNumber && v.task.JobName == jobName {
 			i = j
 			break
 		}
 	}
-	master.working.clients = append(master.working.clients[:i], master.working.clients[i+1:]...)
+	master.working.clients = slices.Delete(master.working.clients, i, i+1)
 }
 func (master *Master) completedTasks() int {
 	c := 0
@@ -230,8 +268,9 @@ func handleStatus(w http.ResponseWriter, req *http.Request) {
 
 }
 func (master *Master) Ping(args Args, reply *bool) error {
+	log.Println(args.Id)
 	for i := range master.working.clients {
-		if master.working.clients[i].id == args.id {
+		if master.working.clients[i].id == args.Id {
 			master.working.clients[i].t = time.Now()
 			*reply = true
 			return nil
@@ -241,6 +280,7 @@ func (master *Master) Ping(args Args, reply *bool) error {
 	return nil
 }
 func handleStart(w http.ResponseWriter, r *http.Request) {
+	log.Print("working on starting master")
 	if r.Method != http.MethodPost {
 		return
 	}
@@ -257,28 +297,30 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 func split(filename string, lines int) int {
 	file, err := os.Open(filename)
 	if err != nil {
+		fmt.Println("Error opening file:", err)
 		return 0
 	}
+	defer file.Close()
+
 	sc := bufio.NewScanner(file)
 	part := 1
 	line := 0
 	var out *os.File
 	var w *bufio.Writer
-	f := func() {
+	newPart := func() {
 		if out != nil {
 			w.Flush()
 			out.Close()
 		}
-		partname, _ := os.Create(fmt.Sprintf("%s.part%d", filename, part))
-		w = bufio.NewWriter(partname)
+		out, _ = os.Create(fmt.Sprintf("%s.part%d.txt", filename, part))
+		w = bufio.NewWriter(out)
 		part++
 		line = 0
-		return
 	}
-	f()
+	newPart()
 	for sc.Scan() {
 		if line >= lines {
-			f()
+			newPart()
 		}
 		w.WriteString(sc.Text() + "\n")
 		line++
@@ -287,5 +329,5 @@ func split(filename string, lines int) int {
 		w.Flush()
 		out.Close()
 	}
-	return part
+	return part - 1
 }
