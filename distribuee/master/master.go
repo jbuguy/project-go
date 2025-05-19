@@ -102,7 +102,6 @@ func heartbeat(timeout int) {
 }
 
 func setuprpc() net.Listener {
-	go heartbeat(10)
 	rpc.Register(&master)
 	listener, err := net.Listen("tcp", ":1234")
 	if err != nil {
@@ -123,7 +122,7 @@ func listenWorkers(listener net.Listener) {
 }
 
 func setuphttp() {
-	http.Handle("/", http.FileServer(http.Dir("./web")))
+	http.Handle("/", http.FileServer(http.Dir("./distribuee/web")))
 	http.HandleFunc("/status", handleStatus)
 	http.HandleFunc("/start", handleStart)
 	http.ListenAndServe(":8080", nil)
@@ -131,6 +130,7 @@ func setuphttp() {
 
 func (master *Master) run() {
 	count := split("file", 1)
+	go heartbeat(10)
 	for i := range count {
 		master.addTask(Task{jobName: "wordcount", taskNumber: i, inFile: fmt.Sprintf("file.part%d", i), typeName: "map", nReduce: nReduce})
 	}
