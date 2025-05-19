@@ -1,7 +1,7 @@
 package mapreduce
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -16,8 +16,8 @@ const prefix = "mrtmp."
 // KeyValue is a type used to hold the key/value pairs passed to the map and
 // reduce functions.
 type KeyValue struct {
-	Key   string
-	Value string
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 // reduceName constructs the name of the intermediate file which map task
@@ -56,7 +56,7 @@ func ihash(s string) uint32 {
 
 // doMap applique la fonction mapF, et sauvegarde les résultats.
 // A COMPLETER
-func mapF(document string, content string) []KeyValue {
+func mapF(content string) []KeyValue {
 	words := strings.Fields(content)
 	kvs := []KeyValue{}
 
@@ -85,23 +85,29 @@ func DoReduce(
 		// Ouvrir le fichier pour la tâche de mappage i
 		file, _ := os.Open(ReduceName(jobName, i, reduceTaskNumber))
 		// Lire les paires clé-valeur du fichier
-		sc := bufio.NewScanner(file)
-		for sc.Scan() {
-			// Ajouter la valeur à la liste de valeurs pour cette clé
-			line := strings.Split(sc.Text(), " ")
-			m[line[0]] = append(m[line[0]], line[1])
+		decoder := json.NewDecoder(file)
+		for decoder.More() {
+			var kv KeyValue
+			if err := decoder.Decode(&kv); err != nil {
+				fmt.Fprintf(os.Stderr, "Error decoding JSON in file %s: %v\n", file.Name(), err)
+				break
+			}
+			m[kv.Key] = append(m[kv.Key], kv.Value)
 		}
 	}
 	// Ouvrir le fichier de sortie pour la tâche de réduction
 	// utiliser mergeName
 	outName := MergeName(jobName, reduceTaskNumber)
 	file, _ := os.OpenFile(outName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	// Appliquer la fonction de réduction à chaque clé
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+
 	for key, values := range m {
-		// Appliquer reduceF pour réduire les valeurs associées à cette clé
-		// Écrire la clé et la valeur réduite dans le fichier de sortie
-		res := reduceF(key, values)
-		file.WriteString(key + " " + res + "\n")
+		reducedValue := reduceF(key, values)
+		kv := KeyValue{Key: key, Value: reducedValue}
+		if err := encoder.Encode(kv); err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding JSON for key %s: %v\n", key, err)
+		}
 	}
 }
 
@@ -110,27 +116,33 @@ func DoMap(
 	mapTaskNumber int,
 	inFile string,
 	nReduce int,
-	mapF func(string, string) []KeyValue,
+	mapF func(string) []KeyValue,
 ) {
-	data, err := os.ReadFile(prefix + inFile)
+	data, err := os.ReadFile(inFile)
 	if err != nil {
 		log.Fatal(err)
 		return
 	}
 	content := string(data)
-	kvs := mapF(inFile, string(content))
+	kvs := mapF(string(content))
 	sort.Slice(kvs, func(i, j int) bool {
 		return kvs[i].Key < kvs[j].Key
 	})
-	for _, v := range kvs {
-		index := ihash(v.Key) % uint32(nReduce)
+	for i := range nReduce {
+		os.Create(ReduceName(jobName, mapTaskNumber, int(i)))
+	}
+	for _, kv := range kvs {
+		index := ihash(kv.Key) % uint32(nReduce)
 		name := ReduceName(jobName, mapTaskNumber, int(index))
 		file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-
 		if err != nil {
 			continue
 		}
-		file.WriteString(fmt.Sprintf("%s %s\n", v.Key, v.Value))
+		encoder := json.NewEncoder(file)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(kv); err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding JSON for key %s: %v\n", kv, err)
+		}
 		file.Close()
 	}
 }
