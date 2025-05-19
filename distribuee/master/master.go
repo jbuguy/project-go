@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -153,30 +154,33 @@ func (master *Master) getId(args *struct{}, id *string) error {
 	return nil
 }
 func (master *Master) getTask(args Args, reply *Task) error {
-	taskchan := make(chan Task, 1)
 	master.mutex.Lock()
-	defer master.mutex.Unlock()
 	if len(master.tasks) > 0 {
 		*reply = master.tasks[0]
-		master.working.clients = append(master.working.clients, Client{args.id, *reply, time.Now()})
-		x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
-		master.completed[x] = false
-		sort.Slice(master.working.clients, func(i, j int) bool {
-			return master.working.clients[i].t.Before(master.working.clients[j].t)
-		})
 		master.tasks = master.tasks[1:]
+		master.assignTask(args.id, reply)
+		master.mutex.Unlock()
 		return nil
 	}
-	x := fmt.Sprintf("%s%d", reply.jobName, reply.taskNumber)
-	master.completed[x] = false
+	taskchan := make(chan Task, 1)
 	master.waiting = append(master.waiting, taskchan)
+	master.mutex.Unlock()
 	*reply = <-taskchan
+	master.mutex.Lock()
+	master.assignTask(args.id, reply)
+	master.mutex.Unlock()
+	return nil
+}
+
+func (master *Master) assignTask(id string, task *Task) {
+	master.working.clients = append(master.working.clients, Client{id, *task, time.Now()})
+	key := fmt.Sprintf("%s%d", task.jobName, task.taskNumber)
+	master.completed[key] = false
 	sort.Slice(master.working.clients, func(i, j int) bool {
 		return master.working.clients[i].t.Before(master.working.clients[j].t)
 	})
-	return nil
-
 }
+
 func (master *Master) addTask(task Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
@@ -212,7 +216,7 @@ func remove(master *Master, jobName string, taskNumber int) {
 			break
 		}
 	}
-	master.working.clients = append(master.working.clients[:i], master.working.clients[i+1:]...)
+	master.working.clients = slices.Delete(master.working.clients, i, i+1)
 }
 func (master *Master) completedTasks() int {
 	c := 0
@@ -287,5 +291,5 @@ func split(filename string, lines int) int {
 		w.Flush()
 		out.Close()
 	}
-	return part
+	return part - 1
 }
