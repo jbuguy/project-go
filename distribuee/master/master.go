@@ -2,11 +2,9 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net"
-	"net/http"
 	"net/rpc"
 	"os"
 	"project/dist/commons"
@@ -40,7 +38,6 @@ type Client struct {
 	t    time.Time
 }
 
-// json variables types
 type statusjson struct {
 	TaskID string `json:"task_id"`
 	Status string `json:"status"`
@@ -91,17 +88,6 @@ func heartbeat(timeout int) {
 	}
 }
 
-func setuprpc() net.Listener {
-	fmt.Println("init rpc")
-	rpc.Register(&master)
-	listener, err := net.Listen("tcp", ":1234")
-	if err != nil {
-		return nil
-	}
-	fmt.Println("finished init rpc")
-	return listener
-}
-
 func listenWorkers(listener net.Listener) {
 	for {
 		fmt.Println("waiting for connection")
@@ -114,15 +100,6 @@ func listenWorkers(listener net.Listener) {
 	}
 }
 
-func setuphttp() {
-	fmt.Println("init http")
-	http.Handle("/", http.FileServer(http.Dir("./web")))
-	http.HandleFunc("/status", handleStatus)
-	http.HandleFunc("/start", handleStart)
-	fmt.Println("finished init http")
-	http.ListenAndServe(":8080", nil)
-}
-
 func (master *Master) run() {
 	log.Print("going to split the file")
 	count := split("./files/alice29.txt", 1000)
@@ -131,7 +108,7 @@ func (master *Master) run() {
 	master.numtasks = count
 	go heartbeat(10)
 	for i := range count {
-		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("%s.part%d.txt", "alice.txt", i+1), TypeName: "map", Number: nReduce})
+		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("%s.part%d.txt", "alice29.txt", i+1), TypeName: "map", Number: nReduce})
 	}
 	<-master.stage
 	log.Print("mapping stage ended")
@@ -159,40 +136,6 @@ func (master *Master) init() {
 	master.waiting = make([]chan commons.Task, 0)
 }
 
-func (master *Master) GetId(args *struct{}, id *string) error {
-	*id = fmt.Sprintf("%d", master.id)
-	master.id += 1
-	return nil
-}
-func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
-	log.Printf("worker %s trying to get a task", args.Id)
-	master.mutex.Lock()
-	if len(master.tasks) > 0 {
-
-		*reply = master.tasks[0]
-		master.working.clients = append(master.working.clients, Client{args.Id, *reply, time.Now()})
-		x := fmt.Sprintf("%s%d", reply.JobName, reply.TaskNumber)
-		master.completed[x] = false
-		sort.Slice(master.working.clients, func(i, j int) bool {
-			return master.working.clients[i].t.Before(master.working.clients[j].t)
-		})
-		master.tasks = master.tasks[1:]
-		master.assignTask(args.Id, reply)
-		master.mutex.Unlock()
-		return nil
-	}
-	fmt.Println("no waiting task ")
-	taskchan := make(chan commons.Task, 1)
-	master.waiting = append(master.waiting, taskchan)
-	master.mutex.Unlock()
-	fmt.Println("waiting for a task to be available")
-	*reply = <-taskchan
-	master.mutex.Lock()
-	master.assignTask(args.Id, reply)
-	master.mutex.Unlock()
-	return nil
-}
-
 func (master *Master) assignTask(id string, task *commons.Task) {
 	master.working.clients = append(master.working.clients, Client{id, *task, time.Now()})
 	key := fmt.Sprintf("%s%d", task.JobName, task.TaskNumber)
@@ -212,21 +155,6 @@ func (master *Master) addTask(task commons.Task) {
 	} else {
 		master.tasks = append(master.tasks, task)
 	}
-}
-
-// TODO:cpmplete
-func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
-	log.Print("task: ", args)
-	master.mutex.Lock()
-	defer master.mutex.Unlock()
-	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
-	*reply = true
-	remove(master, args.JobName, args.TaskNumber)
-	if master.completedTasks() == master.numtasks {
-		log.Printf("stage completed pasiing to next stage")
-		master.stage <- 1
-	}
-	return nil
 }
 
 func remove(master *Master, jobName string, taskNumber int) {
@@ -251,37 +179,6 @@ func (master *Master) completedTasks() int {
 	return c
 }
 
-func handleStatus(w http.ResponseWriter, req *http.Request) {
-	w.Header().Set("content-type", "application/json")
-	json.NewEncoder(w).Encode(ls)
-
-}
-func (master *Master) Ping(args commons.Args, reply *bool) error {
-	log.Println(args.Id)
-	for i := range master.working.clients {
-		if master.working.clients[i].id == args.Id {
-			master.working.clients[i].t = time.Now()
-			*reply = true
-			return nil
-		}
-	}
-	*reply = false
-	return nil
-}
-func handleStart(w http.ResponseWriter, r *http.Request) {
-	log.Print("working on starting master")
-	if r.Method != http.MethodPost {
-		return
-	}
-	var par Par1
-	err := json.NewDecoder(r.Body).Decode(&par)
-	if err != nil {
-		return
-	}
-	nReduce = par.NReduce
-	go master.run()
-
-}
 func split(filename string, lines int) int {
 	file, err := os.Open(filename)
 	if err != nil {
