@@ -53,7 +53,10 @@ var master Master
 
 func main() {
 	go setuphttp()
-	master = Master{id: 0, stage: make(chan int), working: Clients{clients: make(map[string]Client)}, completed: make(map[string]bool), lifeStop: make(chan bool, 1)}
+	master = Master{id: 0, stage: make(chan int),
+		working:   Clients{clients: make(map[string]Client)},
+		completed: make(map[string]bool),
+		lifeStop:  make(chan bool, 1)}
 	listener := setuprpc()
 	listenWorkers(listener)
 }
@@ -106,7 +109,11 @@ func (master *Master) run() {
 	master.lifeStop = make(chan bool)
 	go heartbeat(10)
 	for i := range count {
-		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("%s.part%d.txt", "file.txt", i+1), TypeName: "map", Number: nReduce})
+		master.addTask(commons.Task{JobName: "wordcount",
+			TaskNumber: i,
+			InFile:     fmt.Sprintf("%s.part%d.txt", "file.txt", i+1),
+			TypeName:   "map",
+			Number:     nReduce})
 	}
 	<-master.stage
 	log.Print("mapping stage ended")
