@@ -9,22 +9,16 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"project/dist/commons"
 	"slices"
 	"sort"
 	"sync"
 	"time"
 )
 
-type Task struct {
-	JobName    string
-	TaskNumber int
-	InFile     string
-	TypeName   string
-	Number     int
-}
 type Master struct {
-	tasks     []Task
-	waiting   []chan Task
+	tasks     []commons.Task
+	waiting   []chan commons.Task
 	mutex     sync.Mutex
 	working   Clients
 	id        int
@@ -39,23 +33,11 @@ type Clients struct {
 }
 
 var nReduce int
-var nMap int
 
 type Client struct {
 	id   string
-	task Task
+	task commons.Task
 	t    time.Time
-}
-type KeyValue struct {
-	Key   string
-	Value string
-}
-type Args struct {
-	Id string
-}
-type Args2 struct {
-	JobName    string
-	TaskNumber int
 }
 
 // json variables types
@@ -149,7 +131,7 @@ func (master *Master) run() {
 	master.numtasks = count
 	go heartbeat(10)
 	for i := range count {
-		master.addTask(Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("file.txt.part%d.txt", i+1), TypeName: "map", Number: nReduce})
+		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("file.txt.part%d.txt", i+1), TypeName: "map", Number: nReduce})
 	}
 	<-master.stage
 	log.Print("mapping stage ended")
@@ -157,7 +139,7 @@ func (master *Master) run() {
 	log.Print("starting reduce stage")
 	master.numtasks = nReduce
 	for i := range nReduce {
-		master.addTask(Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
+		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
 	}
 	<-master.stage
 	master.lifeStop <- true
@@ -166,8 +148,8 @@ func (master *Master) run() {
 
 func (master *Master) init() {
 	master.completed = make(map[string]bool)
-	master.tasks = make([]Task, 0)
-	master.waiting = make([]chan Task, 0)
+	master.tasks = make([]commons.Task, 0)
+	master.waiting = make([]chan commons.Task, 0)
 }
 
 func (master *Master) GetId(args *struct{}, id *string) error {
@@ -175,7 +157,7 @@ func (master *Master) GetId(args *struct{}, id *string) error {
 	master.id += 1
 	return nil
 }
-func (master *Master) GetTask(args Args, reply *Task) error {
+func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	log.Printf("worker %s trying to get a task", args.Id)
 	master.mutex.Lock()
 	if len(master.tasks) > 0 {
@@ -193,7 +175,7 @@ func (master *Master) GetTask(args Args, reply *Task) error {
 		return nil
 	}
 	fmt.Println("no waiting task ")
-	taskchan := make(chan Task, 1)
+	taskchan := make(chan commons.Task, 1)
 	master.waiting = append(master.waiting, taskchan)
 	master.mutex.Unlock()
 	fmt.Println("waiting for a task to be available")
@@ -204,7 +186,7 @@ func (master *Master) GetTask(args Args, reply *Task) error {
 	return nil
 }
 
-func (master *Master) assignTask(id string, task *Task) {
+func (master *Master) assignTask(id string, task *commons.Task) {
 	master.working.clients = append(master.working.clients, Client{id, *task, time.Now()})
 	key := fmt.Sprintf("%s%d", task.JobName, task.TaskNumber)
 	master.completed[key] = false
@@ -213,7 +195,7 @@ func (master *Master) assignTask(id string, task *Task) {
 	})
 }
 
-func (master *Master) addTask(task Task) {
+func (master *Master) addTask(task commons.Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
 	if len(master.waiting) > 0 {
@@ -226,7 +208,7 @@ func (master *Master) addTask(task Task) {
 }
 
 // TODO:cpmplete
-func (master *Master) ReportTaskDone(args Args2, reply *bool) error {
+func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 	log.Print("task: ", args)
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
@@ -255,7 +237,7 @@ func remove(master *Master, jobName string, taskNumber int) {
 func (master *Master) completedTasks() int {
 	c := 0
 	for _, v := range master.completed {
-		if v == true {
+		if v {
 			c++
 		}
 	}
@@ -267,7 +249,7 @@ func handleStatus(w http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(w).Encode(ls)
 
 }
-func (master *Master) Ping(args Args, reply *bool) error {
+func (master *Master) Ping(args commons.Args, reply *bool) error {
 	log.Println(args.Id)
 	for i := range master.working.clients {
 		if master.working.clients[i].id == args.Id {
@@ -289,7 +271,6 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	nMap = par.NMap
 	nReduce = par.NReduce
 	go master.run()
 

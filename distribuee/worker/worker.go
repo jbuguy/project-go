@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/rpc"
 	"os"
+	"project/dist/commons"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,26 +16,7 @@ import (
 )
 
 type Worker struct {
-	id         string
-	shouldWork bool
-}
-type Args2 struct {
-	JobName    string
-	TaskNumber int
-}
-type KeyValue struct {
-	Key   string
-	Value string
-}
-type Args struct {
-	Id string
-}
-type Task struct {
-	JobName    string
-	TaskNumber int
-	InFile     string
-	TypeName   string
-	Number     int
+	id string
 }
 
 const prefix = "./distribuee/files/"
@@ -56,8 +38,8 @@ func AnsName(jobName string) string {
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 	go worker.pingMaster(client, p1)
 	for {
-		var reply Task
-		workerId := Args{worker.id}
+		var reply commons.Task
+		workerId := commons.Args{Id: worker.id}
 		err := client.Call("Master.GetTask", workerId, &reply)
 		if err != nil {
 			log.Fatal(err)
@@ -73,14 +55,12 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 		switch reply.TypeName {
 		case "map":
 			DoMap(reply.JobName, reply.TaskNumber, reply.InFile, reply.Number, mapF)
-			break
 		case "reduce":
 			DoReduce(reply.JobName, reply.TaskNumber, reply.Number, reduceF)
-			break
 		}
 		var tmp bool
 		log.Printf("telling master that the task %s of job %s %d", reply.TypeName, reply.JobName, reply.TaskNumber)
-		err = client.Call("Master.ReportTaskDone", Args2{reply.JobName, reply.TaskNumber}, &tmp)
+		err = client.Call("Master.ReportTaskDone", commons.Args2{JobName: reply.JobName, TaskNumber: reply.TaskNumber}, &tmp)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -116,7 +96,7 @@ func (worker Worker) pingMaster(client *rpc.Client, p float64) {
 			time.Sleep(time.Second * 1)
 		}
 		var reply bool
-		workerId := Args{worker.id}
+		workerId := commons.Args{Id: worker.id}
 		client.Call("Master.Ping", workerId, &reply)
 		if !reply {
 			break
@@ -129,7 +109,7 @@ func DoMap(
 	mapTaskNumber int,
 	inFile string,
 	nReduce int,
-	mapF func(string, string) []KeyValue,
+	mapF func(string, string) []commons.KeyValue,
 ) {
 	log.Print("mapping")
 	data, err := os.ReadFile(prefix + inFile)
@@ -160,14 +140,14 @@ func ihash(s string) uint32 {
 	h.Write([]byte(s))
 	return h.Sum32()
 }
-func mapF(document string, content string) []KeyValue {
+func mapF(document string, content string) []commons.KeyValue {
 	words := strings.Fields(content)
-	kvs := []KeyValue{}
+	kvs := []commons.KeyValue{}
 
 	for _, word := range words {
 		cleaned := strings.ToLower(strings.Trim(word, ".,!?:"))
 		if cleaned != "" {
-			kvs = append(kvs, KeyValue{Key: cleaned, Value: "1"})
+			kvs = append(kvs, commons.KeyValue{Key: cleaned, Value: "1"})
 		}
 	}
 
