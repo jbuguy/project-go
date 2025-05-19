@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -100,5 +101,36 @@ func DoReduce(
 		// Écrire la clé et la valeur réduite dans le fichier de sortie
 		res := reduceF(key, values)
 		file.WriteString(res + "\n")
+	}
+}
+func DoMap(
+	jobName string,
+	mapTaskNumber int,
+	inFile string,
+	nReduce int,
+	mapF func(string, string) []KeyValue,
+) {
+	data, _ := os.ReadFile(inFile)
+	content := string(data)
+	kvs := mapF(fmt.Sprintf("file.part%d", mapTaskNumber), string(content))
+	sort.Slice(kvs, func(i, j int) bool {
+		return kvs[i].Key < kvs[j].Key
+	})
+	files := make([]*os.File, nReduce)
+
+	for i := range nReduce {
+		name := ReduceName(jobName, mapTaskNumber, i)
+		file, _ := os.Create(name)
+		files = append(files, file)
+		defer file.Close()
+	}
+	for _, v := range kvs {
+		index := ihash(v.Key) % uint32(nReduce)
+		name := ReduceName(jobName, mapTaskNumber, int(index))
+		file, err := os.OpenFile(name, os.O_APPEND, 0644)
+		if err != nil {
+			continue
+		}
+		file.WriteString(fmt.Sprintf("%s\n", v.Value))
 	}
 }
