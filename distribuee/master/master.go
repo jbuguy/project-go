@@ -122,13 +122,15 @@ func (master *Master) run() {
 	<-master.stage
 	close(master.lifeStop)
 	log.Print("reduce stage ended")
+	log.Print("starting merge stage ")
 	var resFiles []string
 	for i := range nReduce {
 		resFiles = append(resFiles, "."+commons.MergeName("wordcount", i))
 	}
 	commons.ConcatFiles("."+commons.AnsName("wordcount"), resFiles)
+	log.Print("merge stage ended")
 	commons.CleanIntermediary("wordcount", count, nReduce)
-
+	log.Print("completed all stages")
 }
 
 func (master *Master) init() {
