@@ -31,6 +31,7 @@ type Master struct {
 	completed map[string]bool
 	numtasks  int
 	stage     chan int
+	lifeStop  chan bool
 }
 type Clients struct {
 	clients []Client
@@ -88,13 +89,18 @@ func heartbeat(timeout int) {
 		master.working.mutex.Lock()
 		clients := []Client{}
 		for _, client := range master.working.clients {
-			if now.Sub(client.t) < time.Duration(timeout)*time.Second {
-				fmt.Println("added client", client.id)
-				clients = append(clients, client)
-			} else {
-				x := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
-				if !master.completed[x] {
-					master.addTask(client.task)
+			switch {
+			case <-master.lifeStop:
+				return
+			default:
+				if now.Sub(client.t) < time.Duration(timeout)*time.Second {
+					fmt.Println("added client", client.id)
+					clients = append(clients, client)
+				} else {
+					x := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
+					if !master.completed[x] {
+						master.addTask(client.task)
+					}
 				}
 			}
 		}
@@ -154,6 +160,7 @@ func (master *Master) run() {
 		master.addTask(Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
 	}
 	<-master.stage
+	master.lifeStop <- true
 	log.Print("reduce stage ended")
 }
 
