@@ -7,13 +7,14 @@ func Sequential(jobName string, files []string, nReduce int,
 	reduceF func(string, []string) string,
 ) {
 	for i, f := range files {
+
 		DoMap(jobName, i, f, nReduce, mapF)
 	}
 	resFiles := []string{}
 	for i := 0; i < nReduce; i++ {
 		DoReduce(jobName, i, len(files), reduceF)
-		resFiles=append(resFiles, MergeName(jobName,i))
+		resFiles = append(resFiles, MergeName(jobName, i))
 	}
-	concatFiles(AnsName(jobName),resFiles)
-	return 
+	concatFiles(AnsName(jobName), resFiles)
+	return
 }
