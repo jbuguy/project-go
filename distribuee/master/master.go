@@ -116,7 +116,7 @@ func listenWorkers(listener net.Listener) {
 
 func setuphttp() {
 	fmt.Println("init http")
-	http.Handle("/", http.FileServer(http.Dir("./distribuee/web")))
+	http.Handle("/", http.FileServer(http.Dir("./web")))
 	http.HandleFunc("/status", handleStatus)
 	http.HandleFunc("/start", handleStart)
 	fmt.Println("finished init http")
@@ -125,13 +125,13 @@ func setuphttp() {
 
 func (master *Master) run() {
 	log.Print("going to split the file")
-	count := split("../files/file.txt", 1)
+	count := split("./files/alice29.txt", 1000)
 	log.Print("files splited to ", count)
 	log.Print("starting mapping stage")
 	master.numtasks = count
 	go heartbeat(10)
 	for i := range count {
-		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("file.txt.part%d.txt", i+1), TypeName: "map", Number: nReduce})
+		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, InFile: fmt.Sprintf("%s.part%d.txt", "alice.txt", i+1), TypeName: "map", Number: nReduce})
 	}
 	<-master.stage
 	log.Print("mapping stage ended")
@@ -144,6 +144,13 @@ func (master *Master) run() {
 	<-master.stage
 	master.lifeStop <- true
 	log.Print("reduce stage ended")
+	var resFiles []string
+	for i := range nReduce {
+		resFiles = append(resFiles, commons.MergeName("wordcount", i))
+	}
+	commons.ConcatFiles(commons.AnsName("wordcount"), resFiles)
+	commons.CleanIntermediary("wordcount", count, nReduce)
+
 }
 
 func (master *Master) init() {

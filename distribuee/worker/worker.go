@@ -10,29 +10,12 @@ import (
 	"os"
 	"project/dist/commons"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
 
 type Worker struct {
 	id string
-}
-
-const prefix = "./distribuee/files/"
-
-func ReduceName(jobName string, mapTask int, reduceTask int) string {
-	return prefix + jobName + "-" + strconv.Itoa(mapTask) + "-" + strconv.Itoa(reduceTask)
-}
-
-// mergeName constructs the name of the output file of reduce task <reduceTask>
-func MergeName(jobName string, reduceTask int) string {
-	return prefix + jobName + "-res-" + strconv.Itoa(reduceTask)
-}
-
-// ansName constructs the name of the output file of the final answer
-func AnsName(jobName string) string {
-	return prefix + jobName
 }
 
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
@@ -111,7 +94,7 @@ func DoMap(
 	nReduce int,
 	mapF func(string, string) []commons.KeyValue,
 ) {
-	data, err := os.ReadFile(inFile)
+	data, err := os.ReadFile(commons.Prefix + inFile)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -122,11 +105,11 @@ func DoMap(
 		return kvs[i].Key < kvs[j].Key
 	})
 	for i := range nReduce {
-		os.Create(ReduceName(jobName, mapTaskNumber, int(i)))
+		os.Create(commons.ReduceName(jobName, mapTaskNumber, int(i)))
 	}
 	for _, kv := range kvs {
 		index := ihash(kv.Key) % uint32(nReduce)
-		name := ReduceName(jobName, mapTaskNumber, int(index))
+		name := commons.ReduceName(jobName, mapTaskNumber, int(index))
 		file, err := os.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			continue
@@ -172,7 +155,7 @@ func DoReduce(
 	// Lire les fichiers intermédiaires produits par chaque tâche map
 	for i := range nMap {
 		// Ouvrir le fichier pour la tâche de mappage i
-		file, _ := os.Open(ReduceName(jobName, i, reduceTaskNumber))
+		file, _ := os.Open(commons.ReduceName(jobName, i, reduceTaskNumber))
 		// Lire les paires clé-valeur du fichier
 		decoder := json.NewDecoder(file)
 		for decoder.More() {
@@ -186,7 +169,7 @@ func DoReduce(
 	}
 	// Ouvrir le fichier de sortie pour la tâche de réduction
 	// utiliser mergeName
-	outName := MergeName(jobName, reduceTaskNumber)
+	outName := commons.MergeName(jobName, reduceTaskNumber)
 	file, _ := os.OpenFile(outName, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
