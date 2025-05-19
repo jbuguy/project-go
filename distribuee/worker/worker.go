@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -31,7 +32,7 @@ type Reply1 struct {
 	jobName    string
 	taskNumber int
 	inFile     string
-	funcName   string
+	typeName   string
 	nReduce    int
 }
 
@@ -60,12 +61,12 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 		if random < p2 {
 			return
 		}
-		switch reply.jobName {
+		switch reply.typeName {
 		case "map":
 			DoMap(reply.jobName, reply.taskNumber, reply.inFile, reply.nReduce, mapF)
 			break
 		case "reduce":
-			doReduce(reply.jobName, reply.taskNumber, reply.inFile, reduceF)
+			DoReduce(reply.jobName, reply.taskNumber, reply.nReduce, reduceF)
 			break
 		}
 		var tmp bool
@@ -157,6 +158,35 @@ func mapF(document string, content string) []KeyValue {
 func reduceF(key string, values []string) string {
 	return fmt.Sprintf("%d", len(values))
 }
-func doReduce(jobName string, reduceTaskNumber int, inFile string, reduceF func(key string, values []string) string) {
-
+func DoReduce(
+	jobName string,
+	reduceTaskNumber int,
+	nMap int,
+	reduceF func(key string, values []string) string,
+) {
+	// Créer une map pour stocker les valeurs par clé
+	m := make(map[string][]string)
+	// Lire les fichiers intermédiaires produits par chaque tâche map
+	for i := 0; i < nMap; i++ {
+		// Ouvrir le fichier pour la tâche de mappage i
+		file, _ := os.Open(ReduceName(jobName, i, reduceTaskNumber))
+		// Lire les paires clé-valeur du fichier
+		sc := bufio.NewScanner(file)
+		for sc.Scan() {
+			// Ajouter la valeur à la liste de valeurs pour cette clé
+			line := strings.Split(sc.Text(), " ")
+			m[line[0]] = append(m[line[0]], line[1])
+		}
+	}
+	// Ouvrir le fichier de sortie pour la tâche de réduction
+	// utiliser mergeName
+	outName := MergeName(jobName, reduceTaskNumber)
+	file, _ := os.OpenFile(outName, os.O_APPEND|os.O_CREATE, 0644)
+	// Appliquer la fonction de réduction à chaque clé
+	for key, values := range m {
+		// Appliquer reduceF pour réduire les valeurs associées à cette clé
+		// Écrire la clé et la valeur réduite dans le fichier de sortie
+		res := reduceF(key, values)
+		file.WriteString(res + "\n")
+	}
 }
