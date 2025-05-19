@@ -86,7 +86,7 @@ func start() {
 		}
 		var id int
 		client.Call("master.getId", nil, &id)
-		worker.simulate(client, 0.1, 0.01)
+		worker.simulate(client, 0.001, 0.001)
 		client.Close()
 	}
 }
