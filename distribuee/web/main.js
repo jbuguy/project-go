@@ -10,6 +10,7 @@ async function fetch_status() {
     if(d.stage=="done"){
         console.log("done");
     }
+    updateProgressBar(d.progress,1)
     document.getElementById("status").innerHTML = d.stats.map(s =>
     `<p>${s.task_id}: ${s.status}</p>`).join("");
 }

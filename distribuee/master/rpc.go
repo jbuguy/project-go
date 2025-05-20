@@ -21,17 +21,21 @@ func setuprpc() net.Listener {
 	return listener
 }
 func (master *Master) GetId(args *struct{}, id *string) error {
+	master.mutex.Lock()
+	defer master.mutex.Unlock()
+
 	*id = fmt.Sprintf("%d", master.id)
+	master.working.clients[*id] = Client{t: time.Now()}
 	master.id += 1
+
 	return nil
 }
+
 func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	log.Printf("worker %s trying to get a task", args.Id)
 	master.mutex.Lock()
 	if len(master.tasks) > 0 {
-
 		*reply = master.tasks[0]
-		master.working.clients[args.Id] = Client{*reply, time.Now()}
 		x := fmt.Sprintf("%s%d", reply.JobName, reply.TaskNumber)
 		master.completed[x] = false
 		master.tasks = master.tasks[1:]
@@ -45,6 +49,7 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	master.mutex.Unlock()
 	fmt.Println("waiting for a task to be available")
 	*reply = <-taskchan
+
 	master.mutex.Lock()
 	master.assignTask(args.Id, reply)
 	master.mutex.Unlock()
@@ -60,8 +65,9 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
 	*reply = true
 	remove(master, args.JobName, args.TaskNumber)
-	
-	if master.completedTasks() == master.numtasks {
+	comp := master.completedTasks()
+	master.progO.updateProgress(float64(comp) / float64(master.numtasks) * 100)
+	if comp == master.numtasks {
 		log.Printf("stage completed pasiing to next stage")
 		master.stage <- 1
 	}

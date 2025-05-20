@@ -94,21 +94,24 @@ func heartbeat(timeout int) {
 		case <-ticker.C:
 			now := time.Now()
 			master.working.mutex.Lock()
-			clients := make(map[string]Client)
+			active := make(map[string]Client)
 			for id, client := range master.working.clients {
 				if now.Sub(client.t) < time.Duration(timeout)*time.Second {
-					fmt.Println("added client", id)
-					clients[id] = client
+					active[id] = client
 				} else {
-					x := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
-					if !master.completed[x] {
+					master.mutex.Lock()
+					key := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
+					if !master.completed[key] {
+						fmt.Println("reassigning task:", key)
 						master.addTask(client.task)
 					}
+					master.mutex.Unlock()
 				}
 			}
-			master.working.clients = clients
+			master.working.clients = active
 			master.working.mutex.Unlock()
 		case <-master.lifeStop:
+			fmt.Println("shutting down heartbeat monitor")
 			return
 		}
 	}
