@@ -107,14 +107,12 @@ func heartbeat(timeout int) {
 			now := time.Now()
 			for id, client := range master.working.clients {
 				if now.Sub(client.t) > time.Duration(timeout)*time.Second {
-					master.mutex.Lock()
 					if !master.completed[client.task.Name()] {
 						master.taskO.notify(client.task.Name(), "relocating")
 						fmt.Println("reassigning task:", client.task.Name())
 						master.addTask(client.task)
 						delete(master.working.clients, id)
 					}
-					master.mutex.Unlock()
 				}
 			}
 			master.mutex.Unlock()
