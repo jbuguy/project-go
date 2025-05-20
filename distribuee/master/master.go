@@ -137,7 +137,7 @@ func listenWorkers(listener net.Listener) {
 
 func (master *Master) run(lines, nReduce int) {
 	log.Print("going to split the file")
-	count := split("../files/file.txt", lines)
+	count := split("./files/file.txt", lines)
 	log.Print("files splited to ", count)
 	log.Print("starting mapping stage")
 	master.stageO.updateStage("map")
