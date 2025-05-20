@@ -15,8 +15,6 @@ import (
 type Master struct {
 	tasks     []commons.Task
 	waiting   []chan commons.Task
-	tasks     []commons.Task
-	waiting   []chan commons.Task
 	mutex     sync.Mutex
 	working   Clients
 	id        int
@@ -154,7 +152,6 @@ func (master *Master) assignTask(id string, task *commons.Task) {
 }
 
 func (master *Master) addTask(task commons.Task) {
-func (master *Master) addTask(task commons.Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
 	if len(master.waiting) > 0 {
@@ -182,8 +179,9 @@ func (master *Master) completedTasks() int {
 	c := 0
 	for _, v := range master.completed {
 		if v {
-		if v {
-			c++
+			if v {
+				c++
+			}
 		}
 	}
 	return c
