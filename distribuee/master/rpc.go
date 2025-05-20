@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-func setuprpc() net.Listener {
+func initRpc() net.Listener {
 	fmt.Println("init rpc")
-	rpc.Register(&master)
+	rpc.Register(&gMaster)
 	listener, err := net.Listen("tcp", ":1234")
 	if err != nil {
 		return nil
@@ -41,11 +41,11 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 		master.mutex.Unlock()
 		return nil
 	}
-	fmt.Println("no waiting task ")
+	log.Print("no waiting task ")
 	taskchan := make(chan commons.Task, 1)
 	master.waitingWorkers = append(master.waitingWorkers, taskchan)
 	master.mutex.Unlock()
-	fmt.Println("waiting for a task to be available")
+	log.Print("waiting for a task to be available")
 	*reply = <-taskchan
 	master.mutex.Lock()
 	master.assignTask(args.Id, reply)
@@ -57,7 +57,7 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 	defer master.mutex.Unlock()
 	a := commons.Task{}
 	if v := master.working.clients[args.Id]; v.task == a {
-		return errors.New("not a working client")
+		return errors.New("client is not registred")
 	}
 	log.Print("task: ", args)
 	t := commons.Task{TaskNumber: args.TaskNumber, JobName: args.JobName, TypeName: args.TypeName}
@@ -68,7 +68,7 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 	comp := master.completedTasks()
 	master.progO.updateProgress(float64(comp+1) / float64(master.numtasks) * 100)
 	if comp == master.numtasks {
-		log.Printf("stage completed pasiing to next stage")
+		log.Printf("stage completed passing to next stage")
 		master.stage <- 1
 	}
 	return nil

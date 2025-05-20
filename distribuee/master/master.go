@@ -66,7 +66,7 @@ type TaskObserver struct {
 func (observer *TaskObserver) notify(id, state string) {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
-	ls.Lstatus = append(ls.Lstatus, statusjson{id, state})
+	observer.ls.Lstatus = append(ls.Lstatus, statusjson{id, state})
 }
 func (observer *ProgressObserver) updateProgress(progress float64) {
 	observer.mutex.Lock()
@@ -81,20 +81,20 @@ func (observer *StageObserver) updateStage(ch string) {
 }
 
 var ls Liststatus
-var master Master
+var gMaster Master
 
 func main() {
-	master = Master{id: 0, stage: make(chan int),
+	gMaster = Master{id: 0, stage: make(chan int),
 		working:   Clients{clients: make(map[string]Client)},
 		completed: make(map[string]bool),
 		lifeStop:  make(chan bool, 1)}
-	master.stageO = StageObserver{&ls, sync.Mutex{}}
-	master.stageO.updateStage("inactive")
-	master.progO = ProgressObserver{&ls, sync.Mutex{}}
-	master.taskO = TaskObserver{&ls, sync.Mutex{}}
-	master.progO.updateProgress(0)
-	go setuphttp()
-	listener := setuprpc()
+	gMaster.stageO = StageObserver{&ls, sync.Mutex{}}
+	gMaster.stageO.updateStage("inactive")
+	gMaster.progO = ProgressObserver{&ls, sync.Mutex{}}
+	gMaster.taskO = TaskObserver{&ls, sync.Mutex{}}
+	gMaster.progO.updateProgress(0)
+	go initHttp()
+	listener := initRpc()
 	listenWorkers(listener)
 }
 func heartbeat(timeout int) {
@@ -103,20 +103,20 @@ func heartbeat(timeout int) {
 	for {
 		select {
 		case <-ticker.C:
-			master.mutex.Lock()
+			gMaster.mutex.Lock()
 			now := time.Now()
-			for id, client := range master.working.clients {
+			for id, client := range gMaster.working.clients {
 				if now.Sub(client.t) > time.Duration(timeout)*time.Second {
-					if !master.completed[client.task.Name()] {
-						master.taskO.notify(client.task.Name(), "relocating")
+					if !gMaster.completed[client.task.Name()] {
+						gMaster.taskO.notify(client.task.Name(), "relocating")
 						fmt.Println("reassigning task:", client.task.Name())
-						master.addTask(client.task)
-						delete(master.working.clients, id)
+						gMaster.addTask(client.task)
+						delete(gMaster.working.clients, id)
 					}
 				}
 			}
-			master.mutex.Unlock()
-		case <-master.lifeStop:
+			gMaster.mutex.Unlock()
+		case <-gMaster.lifeStop:
 			fmt.Println("shutting down heartbeat monitor")
 			return
 		}
@@ -130,7 +130,7 @@ func listenWorkers(listener net.Listener) {
 		if err != nil {
 			continue
 		}
-		fmt.Println("serving client ", master.id)
+		fmt.Println("serving client ", gMaster.id)
 		go rpc.ServeConn(conn)
 	}
 }
@@ -222,7 +222,6 @@ func split(filename string, lines int) int {
 		return 0
 	}
 	defer file.Close()
-
 	sc := bufio.NewScanner(file)
 	part := 1
 	line := 0

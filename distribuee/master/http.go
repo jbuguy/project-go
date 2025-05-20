@@ -7,7 +7,7 @@ import (
 	"net/http"
 )
 
-func setuphttp() {
+func initHttp() {
 	fmt.Println("init http")
 
 	http.Handle("/", http.FileServer(http.Dir("../web")))
@@ -39,6 +39,6 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		lines = par.Lines
 	}
 	nReduce := par.NReduce
-	go master.run(lines, nReduce)
+	go gMaster.run(lines, nReduce)
 
 }
