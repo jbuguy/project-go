@@ -34,7 +34,7 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	master.mutex.Lock()
 	if len(master.tasks) > 0 {
 		*reply = master.tasks[0]
-		x := fmt.Sprintf("%s%d", reply.JobName, reply.TaskNumber)
+		x := reply.Name()
 		master.completed[x] = false
 		master.tasks = master.tasks[1:]
 		master.assignTask(args.Id, reply)
@@ -61,7 +61,9 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 		return errors.New("not a working client")
 	}
 	log.Print("task: ", args)
-	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
+	t := commons.Task{TaskNumber: args.TaskNumber, JobName: args.JobName, TypeName: args.TypeName}
+	master.completed[t.Name()] = true
+	master.taskO.notify(t.Name(), "done")
 	*reply = true
 	remove(master, args.Id)
 	comp := master.completedTasks()

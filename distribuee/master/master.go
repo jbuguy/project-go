@@ -24,6 +24,7 @@ type Master struct {
 	lifeStop  chan bool
 	stageO    StageObserver
 	progO     ProgressObserver
+	taskO     TaskObserver
 }
 type Clients struct {
 	clients map[string]Client
@@ -57,7 +58,16 @@ type ProgressObserver struct {
 	ls    *Liststatus
 	mutex sync.Mutex
 }
+type TaskObserver struct {
+	ls    *Liststatus
+	mutex sync.Mutex
+}
 
+func (observer *TaskObserver) notify(id, state string) {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	ls.Lstatus = append(ls.Lstatus, statusjson{id, state})
+}
 func (observer *ProgressObserver) updateProgress(progress float64) {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
@@ -81,6 +91,7 @@ func main() {
 	master.stageO = StageObserver{&ls, sync.Mutex{}}
 	master.stageO.updateStage("inactive")
 	master.progO = ProgressObserver{&ls, sync.Mutex{}}
+	master.taskO = TaskObserver{&ls, sync.Mutex{}}
 	master.progO.updateProgress(0)
 	go setuphttp()
 	listener := setuprpc()
@@ -100,9 +111,9 @@ func heartbeat(timeout int) {
 					active[id] = client
 				} else {
 					master.mutex.Lock()
-					key := fmt.Sprintf("%s%d", client.task.JobName, client.task.TaskNumber)
-					if !master.completed[key] {
-						fmt.Println("reassigning task:", key)
+					if !master.completed[client.task.Name()] {
+						master.taskO.notify(client.task.Name(), "relocating")
+						fmt.Println("reassigning task:", client.task.Name())
 						master.addTask(client.task)
 					}
 					master.mutex.Unlock()
@@ -178,14 +189,14 @@ func (master *Master) init() {
 
 func (master *Master) assignTask(id string, task *commons.Task) {
 	master.working.clients[id] = Client{*task, time.Now()}
-	key := fmt.Sprintf("%s%d", task.JobName, task.TaskNumber)
-	master.completed[key] = false
-
+	master.completed[task.Name()] = false
+	master.taskO.notify(task.Name(), "working")
 }
 
 func (master *Master) addTask(task commons.Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
+	master.taskO.notify(task.Name(), "waiting")
 	if len(master.waiting) > 0 {
 		workerChan := master.waiting[0]
 		master.waiting = master.waiting[1:]

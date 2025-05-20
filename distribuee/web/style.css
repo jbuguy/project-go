@@ -1,17 +1,86 @@
+#phase1,#phase2{
+  display: none;
+}
+/* General body styling */
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background-color: #f8f9fa;
+    color: #333;
+}
+
+/* Headings */
+h2, h3 {
+    color: #2c3e50;
+}
+
+/* Progress container and bar */
 .progress-container {
-  width: 100%;
-  background-color: #e0e0e0;
-  border-radius: 10px;
-  height: 25px;
-  overflow: hidden;
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    height: 20px;
+    margin-bottom: 15px;
 }
 
 .bar {
-  height: 100%;
-  width: 0%;
-  background-color: #4caf50;
-  transition: width 0.3s ease-in-out;
+    height: 100%;
+    width: 0%;
+    background-color: #3498db;
+    transition: width 0.5s ease;
 }
-#phase1,#phase2{
-  display: none;
+
+/* Input fields and labels */
+label {
+    display: inline-block;
+    width: 250px;
+    margin-bottom: 10px;
+}
+
+input[type="text"] {
+    padding: 5px;
+    width: 200px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+/* Button styling */
+button#btn {
+    margin-top: 10px;
+    padding: 10px 20px;
+    background-color: #2ecc71;
+    border: none;
+    color: white;
+    font-size: 16px;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+button#btn:hover {
+    background-color: #27ae60;
+}
+
+table {
+    width: 100%; 
+    border-collapse: collapse;
+    margin-top: 20px;
+    border: 2px solid #ccc; 
+}
+
+table th, table td {
+    border: 1px solid #ccc;
+    padding: 10px;
+    text-align: left;
+}
+
+table thead {
+    background-color: #3498db; 
+    color: white;
+    font-weight: bold;
+}
+#status {
+    font-weight: bold;
+    margin: 10px 0;
+    color: #27ae60;
 }
