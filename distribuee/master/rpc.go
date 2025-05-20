@@ -60,6 +60,7 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
 	*reply = true
 	remove(master, args.JobName, args.TaskNumber)
+	
 	if master.completedTasks() == master.numtasks {
 		log.Printf("stage completed pasiing to next stage")
 		master.stage <- 1
