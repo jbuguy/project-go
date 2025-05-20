@@ -1,20 +1,26 @@
 async function fetch_status() {
     const res = await fetch("/status");
     const d = await res.json();
+    if (d==null) {
+        return
+    }
     if(d.stage=="map"){
+        updateProgressBar(d.progress,1)
+        document.getElementById("phase1").style.display="block"
         console.log("map");
     }
     if(d.stage=="reduce"){
+        document.getElementById("phase2").style.display="block"
+        updateProgressBar(d.progress,2)
         console.log("reduce");
     }
     if(d.stage=="done"){
         console.log("done");
     }
-    updateProgressBar(d.progress,1)
     document.getElementById("status").innerHTML = d.stats.map(s =>
     `<p>${s.task_id}: ${s.status}</p>`).join("");
 }
-setInterval(fetch_status, 2000);
+setInterval(fetch_status, 20);
 fetch_status()
 function start() {
     const lines = document.getElementById("lines").value;
