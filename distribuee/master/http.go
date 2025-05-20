@@ -31,7 +31,8 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	nReduce = par.NReduce
-	go master.run()
+	lines := par.Lines
+	nReduce := par.NReduce
+	go master.run(lines, nReduce)
 
 }
