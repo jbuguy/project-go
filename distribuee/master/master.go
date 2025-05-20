@@ -41,7 +41,7 @@ type statusjson struct {
 
 type Liststatus struct {
 	Lstatus []statusjson `json:"stats"`
-	stage   string
+	Stage   string       `json:"stage"`
 }
 type Par1 struct {
 	Lines   int `json:"lines"`
@@ -55,7 +55,7 @@ type StageObserver struct {
 func (stageObserver *StageObserver) notify(ch string) {
 	stageObserver.mutex.Lock()
 	defer stageObserver.mutex.Unlock()
-	stageObserver.ls.stage = ch
+	stageObserver.ls.Stage = ch
 }
 
 var ls Liststatus

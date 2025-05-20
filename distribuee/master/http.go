@@ -31,7 +31,13 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	lines := par.Lines
+	var lines int
+	if par.Lines < 100 {
+		log.Print("nombre de line invalid", par.Lines)
+		lines = 100
+	} else {
+		lines = par.Lines
+	}
 	nReduce := par.NReduce
 	go master.run(lines, nReduce)
 
