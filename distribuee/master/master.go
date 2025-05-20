@@ -40,8 +40,9 @@ type statusjson struct {
 }
 
 type Liststatus struct {
-	Lstatus []statusjson `json:"stats"`
-	Stage   string       `json:"stage"`
+	Lstatus  []statusjson `json:"stats"`
+	Stage    string       `json:"stage"`
+	progress float64
 }
 type Par1 struct {
 	Lines   int `json:"lines"`
@@ -51,23 +52,33 @@ type StageObserver struct {
 	ls    Liststatus
 	mutex sync.Mutex
 }
+type ProgressObserver struct {
+	ls    Liststatus
+	mutex sync.Mutex
+}
 
-func (stageObserver *StageObserver) notify(ch string) {
-	stageObserver.mutex.Lock()
-	defer stageObserver.mutex.Unlock()
-	stageObserver.ls.Stage = ch
+func (observer *ProgressObserver) updateProgress(progress float64) {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.ls.progress = progress
+}
+
+func (observer *StageObserver) updateStage(ch string) {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.ls.Stage = ch
 }
 
 var ls Liststatus
 var master Master
 
 func main() {
-	master.StageObserver = StageObserver{ls, sync.Mutex{}}
-	master.StageObserver.notify("inactive")
 	master = Master{id: 0, stage: make(chan int),
 		working:   Clients{clients: make(map[string]Client)},
 		completed: make(map[string]bool),
 		lifeStop:  make(chan bool, 1)}
+	master.StageObserver = StageObserver{ls, sync.Mutex{}}
+	master.StageObserver.updateStage("inactive")
 	go setuphttp()
 	listener := setuprpc()
 	listenWorkers(listener)
@@ -117,7 +128,7 @@ func (master *Master) run(lines, nReduce int) {
 	count := split("../files/file.txt", lines)
 	log.Print("files splited to ", count)
 	log.Print("starting mapping stage")
-	master.StageObserver.notify("map")
+	master.StageObserver.updateStage("map")
 	master.numtasks = count
 	master.lifeStop = make(chan bool)
 	go heartbeat(10)
@@ -130,7 +141,7 @@ func (master *Master) run(lines, nReduce int) {
 	}
 	<-master.stage
 	log.Print("mapping stage ended")
-	master.StageObserver.notify("reduce")
+	master.StageObserver.updateStage("reduce")
 	master.init()
 	log.Print("starting reduce stage")
 	master.numtasks = nReduce
@@ -141,7 +152,7 @@ func (master *Master) run(lines, nReduce int) {
 	<-master.stage
 	close(master.lifeStop)
 	log.Print("reduce stage ended")
-	master.StageObserver.notify("merge")
+	master.StageObserver.updateStage("merge")
 	log.Print("starting merge stage ")
 	var resFiles []string
 	for i := range nReduce {
@@ -151,7 +162,7 @@ func (master *Master) run(lines, nReduce int) {
 	log.Print("merge stage ended")
 	commons.CleanIntermediary("wordcount", count, nReduce)
 	log.Print("completed all stages")
-	master.StageObserver.notify("done")
+	master.StageObserver.updateStage("done")
 }
 
 func (master *Master) init() {

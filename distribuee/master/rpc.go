@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -50,9 +51,12 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	return nil
 }
 func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
-	log.Print("task: ", args)
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
+	if _, ok := master.working.clients[args.Id]; !ok {
+		return errors.New("not a working client")
+	}
+	log.Print("task: ", args)
 	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
 	*reply = true
 	remove(master, args.JobName, args.TaskNumber)

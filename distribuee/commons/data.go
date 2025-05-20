@@ -1,7 +1,9 @@
 package commons
+
 type Args2 struct {
 	JobName    string
 	TaskNumber int
+	Id         string
 }
 type KeyValue struct {
 	Key   string

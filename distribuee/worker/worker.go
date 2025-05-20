@@ -59,7 +59,7 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 			DoReduce(reply.JobName, reply.TaskNumber, reply.Number, reduceF)
 		}
 		var tmp bool
-		log.Printf("reporting to  master that the task %s of job %s %d is done", reply.TypeName, reply.JobName, reply.TaskNumber)
+		log.Printf("%s reporting to master that the task %s of job %s %d is done", worker.id, reply.TypeName, reply.JobName, reply.TaskNumber)
 		err = client.Call("Master.ReportTaskDone", commons.Args2{JobName: reply.JobName, TaskNumber: reply.TaskNumber}, &tmp)
 		if err != nil {
 			log.Fatal(err)
