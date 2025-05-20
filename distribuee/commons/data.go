@@ -1,7 +1,12 @@
 package commons
+
+import "fmt"
+
 type Args2 struct {
 	JobName    string
 	TaskNumber int
+	Id         string
+	TypeName   string
 }
 type KeyValue struct {
 	Key   string
@@ -16,4 +21,8 @@ type Task struct {
 	InFile     string
 	TypeName   string
 	Number     int
+}
+
+func (task Task) Name() string {
+	return fmt.Sprintf("%s%s%d", task.TypeName, task.JobName, task.TaskNumber)
 }
