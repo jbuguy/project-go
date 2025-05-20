@@ -50,11 +50,11 @@ type Par1 struct {
 	NReduce int `json:"nReduce"`
 }
 type StageObserver struct {
-	ls    Liststatus
+	ls    *Liststatus
 	mutex sync.Mutex
 }
 type ProgressObserver struct {
-	ls    Liststatus
+	ls    *Liststatus
 	mutex sync.Mutex
 }
 
@@ -78,9 +78,9 @@ func main() {
 		working:   Clients{clients: make(map[string]Client)},
 		completed: make(map[string]bool),
 		lifeStop:  make(chan bool, 1)}
-	master.stageO = StageObserver{ls, sync.Mutex{}}
+	master.stageO = StageObserver{&ls, sync.Mutex{}}
 	master.stageO.updateStage("inactive")
-	master.progO = ProgressObserver{ls, sync.Mutex{}}
+	master.progO = ProgressObserver{&ls, sync.Mutex{}}
 	master.progO.updateProgress(0)
 	go setuphttp()
 	listener := setuprpc()
@@ -138,7 +138,7 @@ func (master *Master) run(lines, nReduce int) {
 	master.numtasks = count
 	master.lifeStop = make(chan bool)
 	go heartbeat(10)
-	for i := range count {
+	for i := 0; i < count; i++ {
 		master.addTask(commons.Task{JobName: "wordcount",
 			TaskNumber: i,
 			InFile:     fmt.Sprintf("%s.part%d.txt", "file.txt", i+1),
@@ -151,8 +151,7 @@ func (master *Master) run(lines, nReduce int) {
 	master.init()
 	log.Print("starting reduce stage")
 	master.numtasks = nReduce
-	for i := range nReduce {
-		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
+	for i := 0; i < nReduce; i++ {
 		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
 	}
 	<-master.stage
@@ -196,25 +195,16 @@ func (master *Master) addTask(task commons.Task) {
 	}
 }
 
-func remove(master *Master, jobName string, taskNumber int) {
-	i := ""
-	master.working.mutex.Lock()
-	defer master.working.mutex.Unlock()
-	for j, v := range master.working.clients {
-		if v.task.TaskNumber == taskNumber && v.task.JobName == jobName {
-			i = j
-			break
-		}
-	}
-	delete(master.working.clients, i)
+func remove(master *Master, id string) {
+	client := master.working.clients[id]
+	client.task = commons.Task{}
+	master.working.clients[id] = client
 }
 func (master *Master) completedTasks() int {
 	c := 0
 	for _, v := range master.completed {
 		if v {
-			if v {
-				c++
-			}
+			c++
 		}
 	}
 	return c

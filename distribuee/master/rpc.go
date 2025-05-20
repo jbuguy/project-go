@@ -21,13 +21,11 @@ func setuprpc() net.Listener {
 	return listener
 }
 func (master *Master) GetId(args *struct{}, id *string) error {
-	master.mutex.Lock()
-	defer master.mutex.Unlock()
-
+	master.working.mutex.Lock()
+	defer master.working.mutex.Unlock()
 	*id = fmt.Sprintf("%d", master.id)
 	master.working.clients[*id] = Client{t: time.Now()}
 	master.id += 1
-
 	return nil
 }
 
@@ -58,15 +56,16 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
-	if _, ok := master.working.clients[args.Id]; !ok {
+	a := commons.Task{}
+	if v := master.working.clients[args.Id]; v.task == a {
 		return errors.New("not a working client")
 	}
 	log.Print("task: ", args)
 	master.completed[fmt.Sprintf("%s%d", args.JobName, args.TaskNumber)] = true
 	*reply = true
-	remove(master, args.JobName, args.TaskNumber)
+	remove(master, args.Id)
 	comp := master.completedTasks()
-	master.progO.updateProgress(float64(comp) / float64(master.numtasks) * 100)
+	master.progO.updateProgress(float64(comp+1) / float64(master.numtasks) * 100)
 	if comp == master.numtasks {
 		log.Printf("stage completed pasiing to next stage")
 		master.stage <- 1
@@ -75,6 +74,8 @@ func (master *Master) ReportTaskDone(args commons.Args2, reply *bool) error {
 }
 func (master *Master) Ping(args commons.Args, reply *bool) error {
 	log.Println(args.Id)
+	master.working.mutex.Lock()
+	defer master.working.mutex.Unlock()
 	client, ok := master.working.clients[args.Id]
 	if !ok {
 		*reply = false
