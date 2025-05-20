@@ -13,18 +13,18 @@ import (
 )
 
 type Master struct {
-	tasks     []commons.Task
-	waiting   []chan commons.Task
-	mutex     sync.Mutex
-	working   Clients
-	id        int
-	completed map[string]bool
-	numtasks  int
-	stage     chan int
-	lifeStop  chan bool
-	stageO    StageObserver
-	progO     ProgressObserver
-	taskO     TaskObserver
+	tasks          []commons.Task
+	waitingWorkers []chan commons.Task
+	mutex          sync.Mutex
+	working        Clients
+	id             int
+	completed      map[string]bool
+	numtasks       int
+	stage          chan int
+	lifeStop       chan bool
+	stageO         StageObserver
+	progO          ProgressObserver
+	taskO          TaskObserver
 }
 type Clients struct {
 	clients map[string]Client
@@ -103,24 +103,21 @@ func heartbeat(timeout int) {
 	for {
 		select {
 		case <-ticker.C:
+			master.mutex.Lock()
 			now := time.Now()
-			master.working.mutex.Lock()
-			active := make(map[string]Client)
 			for id, client := range master.working.clients {
-				if now.Sub(client.t) < time.Duration(timeout)*time.Second {
-					active[id] = client
-				} else {
+				if now.Sub(client.t) > time.Duration(timeout)*time.Second {
 					master.mutex.Lock()
 					if !master.completed[client.task.Name()] {
 						master.taskO.notify(client.task.Name(), "relocating")
 						fmt.Println("reassigning task:", client.task.Name())
 						master.addTask(client.task)
+						delete(master.working.clients, id)
 					}
 					master.mutex.Unlock()
 				}
 			}
-			master.working.clients = active
-			master.working.mutex.Unlock()
+			master.mutex.Unlock()
 		case <-master.lifeStop:
 			fmt.Println("shutting down heartbeat monitor")
 			return
@@ -184,7 +181,7 @@ func (master *Master) run(lines, nReduce int) {
 func (master *Master) init() {
 	master.completed = make(map[string]bool)
 	master.tasks = make([]commons.Task, 0)
-	master.waiting = make([]chan commons.Task, 0)
+	master.waitingWorkers = make([]chan commons.Task, 0)
 }
 
 func (master *Master) assignTask(id string, task *commons.Task) {
@@ -197,9 +194,9 @@ func (master *Master) addTask(task commons.Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
 	master.taskO.notify(task.Name(), "waiting")
-	if len(master.waiting) > 0 {
-		workerChan := master.waiting[0]
-		master.waiting = master.waiting[1:]
+	if len(master.waitingWorkers) > 0 {
+		workerChan := master.waitingWorkers[0]
+		master.waitingWorkers = master.waitingWorkers[1:]
 		workerChan <- task
 	} else {
 		master.tasks = append(master.tasks, task)
