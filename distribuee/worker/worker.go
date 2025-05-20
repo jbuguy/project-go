@@ -18,10 +18,25 @@ type Worker struct {
 	id string
 }
 
+const prefix = "./distribuee/files/"
+
+func ReduceName(jobName string, mapTask int, reduceTask int) string {
+	return prefix + jobName + "-" + strconv.Itoa(mapTask) + "-" + strconv.Itoa(reduceTask)
+}
+
+// mergeName constructs the name of the output file of reduce task <reduceTask>
+func MergeName(jobName string, reduceTask int) string {
+	return prefix + jobName + "-res-" + strconv.Itoa(reduceTask)
+}
+
+// ansName constructs the name of the output file of the final answer
+func AnsName(jobName string) string {
+	return prefix + jobName
+}
+
 func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 	go worker.pingMaster(client, p1)
 	for {
-
 		var reply commons.Task
 		workerId := commons.Args{Id: worker.id}
 		err := client.Call("Master.GetTask", workerId, &reply)
@@ -43,7 +58,7 @@ func (worker Worker) simulate(client *rpc.Client, p1, p2 float64) {
 			DoReduce(reply.JobName, reply.TaskNumber, reply.Number, reduceF)
 		}
 		var tmp bool
-		log.Printf("reporting to  master that the task %s of job %s %d is done", reply.TypeName, reply.JobName, reply.TaskNumber)
+		log.Printf("telling master that the task %s of job %s %d", reply.TypeName, reply.JobName, reply.TaskNumber)
 		err = client.Call("Master.ReportTaskDone", commons.Args2{JobName: reply.JobName, TaskNumber: reply.TaskNumber}, &tmp)
 		if err != nil {
 			log.Fatal(err)

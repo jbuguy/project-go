@@ -15,6 +15,8 @@ import (
 type Master struct {
 	tasks     []commons.Task
 	waiting   []chan commons.Task
+	tasks     []commons.Task
+	waiting   []chan commons.Task
 	mutex     sync.Mutex
 	working   Clients
 	id        int
@@ -122,6 +124,7 @@ func (master *Master) run() {
 	master.numtasks = nReduce
 	for i := range nReduce {
 		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
+		master.addTask(commons.Task{JobName: "wordcount", TaskNumber: i, TypeName: "reduce", Number: count})
 	}
 	<-master.stage
 	close(master.lifeStop)
@@ -151,6 +154,7 @@ func (master *Master) assignTask(id string, task *commons.Task) {
 }
 
 func (master *Master) addTask(task commons.Task) {
+func (master *Master) addTask(task commons.Task) {
 	master.mutex.Lock()
 	defer master.mutex.Unlock()
 	if len(master.waiting) > 0 {
@@ -177,6 +181,7 @@ func remove(master *Master, jobName string, taskNumber int) {
 func (master *Master) completedTasks() int {
 	c := 0
 	for _, v := range master.completed {
+		if v {
 		if v {
 			c++
 		}
