@@ -7,10 +7,10 @@ import (
 	"net/http"
 )
 
-func setuphttp() {
+func initHttp() {
 	fmt.Println("init http")
 
-	http.Handle("/", http.FileServer(http.Dir("../web")))
+	http.Handle("/", http.FileServer(http.Dir("./web")))
 	http.HandleFunc("/status", handleStatus)
 	http.HandleFunc("/start", handleStart)
 	fmt.Println("finished init http")
@@ -31,14 +31,8 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	var lines int
-	if par.Lines < 100 {
-		log.Print("nombre de line invalid", par.Lines)
-		lines = 100
-	} else {
-		lines = par.Lines
-	}
+	lines := par.Lines
 	nReduce := par.NReduce
-	go master.run(lines, nReduce)
+	go gMaster.run(lines, nReduce)
 
 }
