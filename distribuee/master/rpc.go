@@ -43,11 +43,10 @@ func (master *Master) GetTask(args commons.Args, reply *commons.Task) error {
 	}
 	fmt.Println("no waiting task ")
 	taskchan := make(chan commons.Task, 1)
-	master.waiting = append(master.waiting, taskchan)
+	master.waitingWorkers = append(master.waitingWorkers, taskchan)
 	master.mutex.Unlock()
 	fmt.Println("waiting for a task to be available")
 	*reply = <-taskchan
-
 	master.mutex.Lock()
 	master.assignTask(args.Id, reply)
 	master.mutex.Unlock()
